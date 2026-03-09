@@ -1,0 +1,9 @@
+{
+  "name": "backend-hardhat-local",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "node": "npx hardhat node --hostname 127.0.0.1 --port 18545"
+  }
+}

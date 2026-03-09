@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
+    "db:sync:role-permissions": "node scripts/sync_role_permissions.js",
+    "db:seed:demo-records": "node scripts/seed_demo_records.js",
+    "db:ensure:specified-signers": "node scripts/ensure_specified_signers_table.js",
+    "db:ensure:signer-templates": "node scripts/ensure_signer_templates_table.js",
+    "chain:compile": "npm --prefix hardhat-local run compile",
+    "chain:node": "npm --prefix hardhat-local run node",
+    "chain:deploy:v2": "node scripts/deploy_maintenance_v2.js",
+    "chain:smoke:v2": "node scripts/smoke_maintenance_v2.js",
+    "test:chain": "node scripts/test_besu.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "ethers": "^6.16.0",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.19.0",
+    "solc": "^0.8.34"
+  },
+  "devDependencies": {
+    "hardhat": "^3.1.11"
+  }
+}
