@@ -20,14 +20,15 @@
 <div align="center">
 
 [![项目状态](https://img.shields.io/badge/状态-开发中-brightgreen?style=flat-square&logo=github)](https://github.com)
-[![项目进度](https://img.shields.io/badge/进度-78%25-yellow?style=flat-square&logo=chart-line)](https://github.com)
+[![项目进度](https://img.shields.io/badge/进度-80%25-yellow?style=flat-square&logo=chart-line)](https://github.com)
 [![项目阶段](https://img.shields.io/badge/阶段-产品化开发-orange?style=flat-square&logo=cog)](https://github.com)
-[![最后更新](https://img.shields.io/badge/更新-2026--03--08-blue?style=flat-square&logo=clock)](https://github.com)
+[![最后更新](https://img.shields.io/badge/更新-2026--03--09-blue?style=flat-square&logo=clock)](https://github.com)
 
 </div>
 
-- **当前进度**: 78% 完成
+- **当前进度**: 80% 完成
 - **项目阶段**: 后端主链路完成，产品化后台与管理能力完善中
+- **最新进展**: 查阅中心、审批工作台、人员管理、签名模板管理已完成
 - **技术栈**:
   - 前端: Vue 3 + Vite + Element Plus
   - 后端: Node.js + Express + ethers
@@ -62,6 +63,7 @@
 - ✅ **防篡改验证**: 支持链下数据重新计算摘要与链上记录比对校验
 - ✅ **权限控制**: RBAC 权限模型，支持角色、权限、用户映射管理
 - ✅ **私钥安全**: 用户私钥仅保留在前端本地，后端不存储任何私钥信息
+- ✅ **图片检测**: 集成 Python 图像检测服务，支持附件图片质量检测
 
 ## 快速开始
 
@@ -171,26 +173,37 @@ project/
 ├── backend/                    # Node.js 后端
 │   ├── hardhat-local/          # Hardhat 本地链子项目
 │   │   ├── contracts/          # Solidity 合约
+│   │   ├── deployments/        # 合约部署信息
 │   │   └── hardhat.config.ts   # Hardhat 配置
+│   ├── python-services/        # Python 微服务
+│   │   └── image-detector/     # 图片检测服务
 │   ├── src/
 │   │   ├── controllers/        # 控制器层
 │   │   ├── services/           # 业务服务层
 │   │   ├── models/             # 数据访问层
 │   │   ├── routes/             # 路由定义
-│   │   └── middlewares/        # 中间件
+│   │   ├── middlewares/        # 中间件
+│   │   └── config/             # 配置文件
 │   ├── scripts/                # 部署和测试脚本
 │   ├── sql/                    # 数据库初始化脚本
 │   └── storage/                # 文件存储目录
 ├── frontend/                   # Vue 3 前端
 │   ├── src/
 │   │   ├── pages/              # 页面组件
-│   │   └── components/         # 通用组件
+│   │   ├── router/             # 路由配置
+│   │   ├── stores/             # 状态管理
+│   │   └── utils/              # 工具函数
 │   └── vite.config.js          # Vite 配置
-└── docs/                       # 项目文档
-    ├── 需求文档.md
-    ├── 架构方案.md
-    ├── 接口文档.md
-    └── 环境配置与启动指南.md
+├── docs/                       # 项目文档
+│   ├── 需求文档.md
+│   ├── 架构方案.md
+│   ├── 接口文档.md
+│   ├── 环境配置与启动指南.md
+│   ├── 项目状态.md
+│   ├── 待办清单.md
+│   └── 图片检测功能说明.md
+├── startall.bat                # Windows 一键启动脚本
+└── startall.ps1                # PowerShell 一键启动脚本
 ```
 
 ## 核心模块
@@ -218,6 +231,12 @@ project/
 - 角色与权限配置
 - 用户状态管理
 - 签名模板管理
+
+### 图片检测模块
+- Python 图像质量检测服务
+- 附件图片自动检测
+- 检测结果存储与查询
+- 支持多种图片格式
 
 ## 业务流程
 
@@ -262,6 +281,7 @@ graph TD
 - 合约位于 `backend/hardhat-local/contracts/`
 - 使用 `npm run chain:compile` 编译合约
 - 使用 `npm run chain:deploy:v2` 部署合约
+- 部署信息保存在 `backend/hardhat-local/deployments/`
 
 ### 后端开发
 - 控制器层: `backend/src/controllers/`
@@ -271,9 +291,13 @@ graph TD
 
 ### 前端开发
 - 页面组件: `frontend/src/pages/`
-- 通用组件: `frontend/src/components/`
+- 路由配置: `frontend/src/router/`
+- 状态管理: `frontend/src/stores/`
+- 工具函数: `frontend/src/utils/`
 - 认证页面: `AuthWorkspacePage.vue`
 - 主后台页面: `WorkspaceShellPage.vue`
+- 审批工作台: `ApprovalWorkbenchPage.vue`
+- 查阅中心: `RecordBrowserPage.vue`
 
 ## 部署说明
 
@@ -294,16 +318,25 @@ graph TD
 - 检查 `.env` 文件是否存在
 - 确认 MySQL 服务是否启动
 - 验证数据库连接参数是否正确
+- 确认 Node.js 版本是否为 18+
 
 ### 前端接口调用失败
 - 确认后端服务是否正常运行
-- 检查端口配置是否正确
+- 检查端口配置是否正确（后端 3000，前端 5173）
 - 清除浏览器缓存重新登录
+- 检查浏览器控制台是否有 CORS 错误
 
 ### 区块链相关错误
-- 确认 Hardhat 本地链是否启动
+- 确认 Hardhat 本地链是否启动（端口 18545）
 - 检查合约是否已正确部署
-- 验证部署信息文件是否存在
+- 验证部署信息文件是否存在于 `backend/hardhat-local/deployments/`
+- 使用 `npm run chain:compile` 重新编译合约
+
+### 一键启动脚本问题
+- Windows 用户使用 `startall.bat`
+- PowerShell 用户使用 `.\startall.ps1`
+- 如遇权限问题，以管理员身份运行
+- 确保所有依赖已通过 `npm install` 安装
 
 ## 贡献指南
 
@@ -322,6 +355,6 @@ graph TD
 
 ---
 
-**最后更新**: 2026年3月8日
+**最后更新**: 2026年3月9日
 **版本**: v2.0.0
-**状态**: 开发中 (78% 完成)
+**状态**: 开发中 (80% 完成)
