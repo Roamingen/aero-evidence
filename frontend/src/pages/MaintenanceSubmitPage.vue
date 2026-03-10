@@ -97,11 +97,11 @@ function createSpecifiedSignerRow() {
 
 function createInitialMaintenanceForm() {
   return {
-    aircraftRegNo: 'B-4321',
-    aircraftType: 'A320',
-    ataCode: '32-11',
-    workType: '功能检查',
-    locationCode: 'HGH-H2',
+    aircraftRegNo: '',
+    aircraftType: '',
+    ataCode: '',
+    workType: '',
+    locationCode: '',
     requiredTechnicianSignatures: 1,
     requiredReviewerSignatures: 1,
     isRII: false,
@@ -455,25 +455,25 @@ watch(() => auth.loginForm.value.privateKey, (privateKey) => {
       <el-form label-position="top">
         <div class="form-grid two-col">
           <el-form-item label="飞机注册号">
-            <el-input v-model="maintenanceForm.aircraftRegNo" />
+            <el-input v-model="maintenanceForm.aircraftRegNo" placeholder="例：B-4321" />
           </el-form-item>
           <el-form-item label="机型">
-            <el-input v-model="maintenanceForm.aircraftType" />
+            <el-input v-model="maintenanceForm.aircraftType" placeholder="例：Airbus A320-200" />
           </el-form-item>
         </div>
 
         <div class="form-grid two-col">
           <el-form-item label="ATA 章节">
-            <el-input v-model="maintenanceForm.ataCode" />
+            <el-input v-model="maintenanceForm.ataCode" placeholder="例：32-11" />
           </el-form-item>
           <el-form-item label="工作类型">
-            <el-input v-model="maintenanceForm.workType" />
+            <el-input v-model="maintenanceForm.workType" placeholder="例：功能检查" />
           </el-form-item>
         </div>
 
         <div class="form-grid two-col">
           <el-form-item label="维修位置">
-            <el-input v-model="maintenanceForm.locationCode" />
+            <el-input v-model="maintenanceForm.locationCode" placeholder="例如 HGH-H2" />
           </el-form-item>
           <el-form-item label="发生时间">
             <el-input v-model="maintenanceForm.occurrenceTime" type="datetime-local" />
