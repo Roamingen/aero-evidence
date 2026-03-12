@@ -113,12 +113,63 @@ async function executeAction(record, signerRole, action, withReason = false) {
       { method: 'GET' },
     );
 
+    console.log('=== 审批操作详情 ===');
+    console.log('记录 ID:', fullRecord.recordId);
+    console.log('飞机注册号:', fullRecord.aircraftRegNo);
+    console.log('当前状态:', fullRecord.status);
+    console.log('技术签名:', `${fullRecord.technicianSignatureCount}/${fullRecord.requiredTechnicianSignatures}`);
+    console.log('审核签名:', `${fullRecord.reviewerSignatureCount}/${fullRecord.requiredReviewerSignatures}`);
+    console.log('是否 RII:', fullRecord.isRII);
+    console.log('已有签名:', fullRecord.signatures.length, '个');
+    if (fullRecord.signatures.length > 0) {
+      console.log('签名详情:');
+      fullRecord.signatures.forEach((sig, idx) => {
+        console.log(`  ${idx + 1}. ${sig.signerEmployeeNo} - ${sig.action} (${sig.signerRole})`);
+      });
+    }
+    if (fullRecord.specifiedSigners && fullRecord.specifiedSigners.length > 0) {
+      console.log('指定签名人:', fullRecord.specifiedSigners.length, '人');
+      fullRecord.specifiedSigners.forEach((signer, idx) => {
+        console.log(`  ${idx + 1}. ${signer.signerEmployeeNo} - ${signer.signerRole} - ${signer.status}`);
+      });
+    }
+
     const currentUser = auth.latestLoggedInUser.value;
+    console.log('当前用户:', currentUser.employeeNo);
+    console.log('当前地址:', currentUser.address);
+    console.log('签名角色:', signerRole);
+    console.log('签名动作:', action);
+
+    // 检查是否已经签过名
+    const alreadySigned = fullRecord.signatures.some(
+      sig => sig.action === action && sig.signerEmployeeNo === currentUser.employeeNo
+    );
+    if (alreadySigned) {
+      ElMessage.warning(`您（${currentUser.employeeNo}）已经对此记录执行过 ${action} 操作，不能重复签名`);
+      return;
+    }
+
+    // 检查签名数量是否已满
+    if (action === 'reviewer_sign' && fullRecord.reviewerSignatureCount >= fullRecord.requiredReviewerSignatures) {
+      ElMessage.warning(`审核签名数量已满足（${fullRecord.reviewerSignatureCount}/${fullRecord.requiredReviewerSignatures}），请直接进行放行操作`);
+      return;
+    }
+
     const signedDigest = buildDigest(fullRecord.recordId, action, fullRecord.hashes, currentUser.employeeNo);
+    console.log('签名摘要:', signedDigest);
 
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
+    const signerAddress = await signer.getAddress();
+    console.log('MetaMask 地址:', signerAddress);
+
+    if (signerAddress.toLowerCase() !== currentUser.address.toLowerCase()) {
+      ElMessage.error(`MetaMask 地址（${signerAddress}）与登录用户地址（${currentUser.address}）不一致，请切换 MetaMask 账户`);
+      return;
+    }
+
     const signature = await signer.signMessage(ethers.getBytes(signedDigest));
+    console.log('签名完成，准备提交...');
 
     const payload = {
       signerRole,
@@ -139,11 +190,36 @@ async function executeAction(record, signerRole, action, withReason = false) {
       },
     );
 
+    console.log('✅ 签名提交成功');
     ElMessage.success(`${action === 'reject' ? '驳回' : action === 'release' ? '放行' : '审核'}成功`);
     await fetchWorkbench();
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.message || `${action} 操作失败`);
+      console.error('=== 操作失败 ===');
+      console.error(error);
+      
+      let errorMessage = error.message || `${action} 操作失败`;
+      
+      // 解析区块链错误信息
+      if (errorMessage.includes('CALL_EXCEPTION')) {
+        if (errorMessage.includes('Not enough reviewer signatures')) {
+          errorMessage = '审核签名数量不足，无法完成此操作';
+        } else if (errorMessage.includes('Not enough technician signatures')) {
+          errorMessage = '技术签名数量不足，无法完成此操作';
+        } else if (errorMessage.includes('Reviewer sign not allowed')) {
+          errorMessage = '当前记录状态不允许审核签名';
+        } else if (errorMessage.includes('Release not allowed')) {
+          errorMessage = '当前记录状态不允许放行';
+        } else if (errorMessage.includes('Reject not allowed')) {
+          errorMessage = '当前记录状态不允许驳回';
+        } else if (errorMessage.includes('Signer already used this action')) {
+          errorMessage = '您已经对此记录执行过该操作，不能重复签名';
+        } else {
+          errorMessage = '区块链合约调用失败，请检查记录状态和签名条件';
+        }
+      }
+      
+      ElMessage.error(errorMessage);
     }
   } finally {
     loading.value = false;
@@ -151,6 +227,12 @@ async function executeAction(record, signerRole, action, withReason = false) {
 }
 
 async function handleReview(record) {
+  // 预检查
+  if (record.status !== 'submitted' && record.status !== 'peer_checked') {
+    ElMessage.warning(`记录状态为 ${record.status}，不能进行审核签名`);
+    return;
+  }
+  
   await executeAction(record, 'reviewer', 'reviewer_sign', false);
 }
 

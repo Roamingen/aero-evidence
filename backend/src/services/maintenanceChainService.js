@@ -102,14 +102,46 @@ async function appendSignature(recordId, signerRole, action, signerEmployeeNo, s
         throw createError(`不支持的 action: ${action}`, 400);
     }
 
-    const tx = await contract.recordApproval(
-        recordId,
-        signerRoleEnum,
-        actionEnum,
-        signerEmployeeNo,
-        signedDigest,
-        signature
-    );
+    let tx;
+    try {
+        tx = await contract.recordApproval(
+            recordId,
+            signerRoleEnum,
+            actionEnum,
+            signerEmployeeNo,
+            signedDigest,
+            signature
+        );
+    } catch (error) {
+        console.error('合约调用失败:', error);
+        
+        // 解析合约 revert 错误信息
+        let errorMessage = '区块链合约调用失败';
+        if (error.message) {
+            if (error.message.includes('Not enough reviewer signatures')) {
+                errorMessage = '审核签名数量不足';
+            } else if (error.message.includes('Not enough technician signatures')) {
+                errorMessage = '技术签名数量不足';
+            } else if (error.message.includes('Reviewer sign not allowed')) {
+                errorMessage = '当前记录状态不允许审核签名';
+            } else if (error.message.includes('Release not allowed')) {
+                errorMessage = '当前记录状态不允许放行';
+            } else if (error.message.includes('Reject not allowed')) {
+                errorMessage = '当前记录状态不允许驳回';
+            } else if (error.message.includes('Signer already used this action')) {
+                errorMessage = '该签名人已经执行过此操作';
+            } else if (error.message.includes('RII approval not required')) {
+                errorMessage = '该记录不需要 RII 批准';
+            } else if (error.message.includes('Release requires RII approval')) {
+                errorMessage = '放行需要先完成 RII 批准';
+            } else if (error.reason) {
+                errorMessage = error.reason;
+            }
+        }
+        
+        throw createError(errorMessage, 400);
+    }
+
     const receipt = await tx.wait();
     let chainRecord;
     try {
