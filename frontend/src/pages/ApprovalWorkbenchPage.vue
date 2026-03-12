@@ -70,21 +70,17 @@ onMounted(() => {
 });
 
 function buildDigest(recordId, action, hashes, signerEmployeeNo) {
-  const message = ethers.solidityPacked(
-    ['bytes32', 'string', 'bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32', 'string'],
-    [
-      recordId,
-      action,
-      hashes.formHash || ethers.ZeroHash,
-      hashes.faultHash || ethers.ZeroHash,
-      hashes.partsHash || ethers.ZeroHash,
-      hashes.measurementsHash || ethers.ZeroHash,
-      hashes.replacementsHash || ethers.ZeroHash,
-      hashes.attachmentManifestHash || ethers.ZeroHash,
-      signerEmployeeNo,
-    ],
-  );
-  return ethers.keccak256(message);
+  const digestObject = {
+    recordId,
+    action,
+    formHash: hashes.formHash,
+    attachmentManifestHash: hashes.attachmentManifestHash,
+    signerEmployeeNo,
+  };
+  
+  const sortedKeys = Object.keys(digestObject).sort();
+  const canonicalJson = `{${sortedKeys.map((key) => `${JSON.stringify(key)}:${JSON.stringify(digestObject[key])}`).join(',')}}`;
+  return ethers.keccak256(ethers.toUtf8Bytes(canonicalJson));
 }
 
 async function executeAction(record, signerRole, action, withReason = false) {
