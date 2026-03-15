@@ -32,14 +32,6 @@ function assertRequiredString(value, fieldName, label) {
     }
 }
 
-function assertAdminBootstrapKey(bootstrapKey) {
-    if (!bootstrapKey || bootstrapKey !== env.adminBootstrapKey) {
-        const error = new Error('管理员引导密钥无效');
-        error.statusCode = 403;
-        throw error;
-    }
-}
-
 function buildLoginChallenge(address, nonce, issuedAt) {
     return [
         'Aviation Maintenance Login',
@@ -107,8 +99,15 @@ function buildToken(user) {
     );
 }
 
-async function preregisterUser(bootstrapKey, payload) {
-    assertAdminBootstrapKey(bootstrapKey);
+async function preregisterUser(adminAddress, payload) {
+    const admin = await userStore.findByAddress(normalizeAddress(adminAddress));
+    if (!admin) {
+        const error = new Error('管理员不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    assertUserHasAnyPermission(admin, 'user.preregister', '没有预注册权限');
     assertRequiredString(payload.employeeNo, 'employeeNo', '工号');
     assertRequiredString(payload.name, 'name', '姓名');
 
@@ -521,6 +520,250 @@ async function upsertSignerTemplate(address, templateCode, payload = {}) {
     );
 }
 
+async function listActivationCodes(address) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.manage', '当前用户无权查看激活码');
+
+    const codes = await activationCodeStore.listAllActiveCodesByStatus();
+    return codes.map(code => ({
+        id: code.id,
+        employeeNo: code.employeeNo,
+        codeLast4: code.codeLast4,
+        expiresAt: code.expiresAt,
+        userStatus: code.userStatus,
+        createdAt: code.createdAt,
+    }));
+}
+
+async function regenerateActivationCode(address, employeeNo) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.preregister', '当前用户无权重新生成激活码');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const expiresAt = new Date(Date.now() + env.activationCodeTtlMinutes * 60 * 1000).toISOString();
+    const activationCode = await activationCodeStore.issueCode(user.id, {
+        expiresAt,
+        deliveryChannel: 'manual',
+    });
+
+    return {
+        employeeNo: user.employeeNo,
+        activationCode: activationCode.code,
+        activationCodeLast4: activationCode.codeLast4,
+        activationCodeExpiresAt: activationCode.expiresAt,
+    };
+}
+
+async function revokeActivationCode(address, employeeNo) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.preregister', '当前用户无权撤销激活码');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const activationCode = await activationCodeStore.getActivationCodeByUserId(user.id);
+    if (!activationCode) {
+        const error = new Error('该用户暂无有效激活码');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    await activationCodeStore.revokeActivationCode(activationCode.id);
+
+    return {
+        employeeNo: user.employeeNo,
+        message: '激活码已撤销',
+    };
+}
+
+async function clearUserAddress(address, employeeNo) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.manage', '当前用户无权清除用户地址');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    if (!user.address) {
+        const error = new Error('该用户未绑定地址');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    await userStore.clearUserAddress(user.id);
+
+    return {
+        employeeNo: user.employeeNo,
+        message: '用户地址已清除',
+    };
+}
+
+async function resetUserToPending(address, employeeNo) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.preregister', '当前用户无权重置用户状态');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    // 清除地址并重置状态为 pending_activation
+    await userStore.clearUserAddress(user.id);
+
+    // 生成新的激活码
+    const expiresAt = new Date(Date.now() + env.activationCodeTtlMinutes * 60 * 1000).toISOString();
+    const activationCode = await activationCodeStore.issueCode(user.id, {
+        expiresAt,
+        deliveryChannel: 'manual',
+    });
+
+    const updatedUser = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    return {
+        user: {
+            employeeNo: updatedUser.employeeNo,
+            name: updatedUser.name,
+            status: updatedUser.status,
+        },
+        activationCode: activationCode.code,
+        activationCodeLast4: activationCode.codeLast4,
+        activationCodeExpiresAt: activationCode.expiresAt,
+    };
+}
+
+async function modifyUserAddress(address, employeeNo, newAddress) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.manage', '当前用户无权修改用户地址');
+
+    assertAddress(newAddress);
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const updatedUser = await userStore.modifyUserAddress(user.id, newAddress);
+
+    return {
+        user: {
+            employeeNo: updatedUser.employeeNo,
+            name: updatedUser.name,
+            address: updatedUser.address,
+            status: updatedUser.status,
+            addressBoundAt: updatedUser.addressBoundAt,
+        },
+        message: '用户地址已修改',
+    };
+}
+
+async function listAllPermissions(address) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'role.manage', '当前用户无权查看权限列表');
+
+    return await userStore.getAllPermissions();
+}
+
+async function getUserPermissions(address, employeeNo) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.manage', '当前用户无权查看用户权限');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const overrides = await userStore.getUserPermissionOverrides(user.id);
+
+    return {
+        employeeNo: user.employeeNo,
+        name: user.name,
+        roles: user.roles,
+        permissions: user.permissions,
+        permissionOverrides: overrides,
+    };
+}
+
+async function setUserPermissionOverride(address, employeeNo, permissionCode, effect, reason = null) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'role.manage', '当前用户无权管理用户权限');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    await userStore.setUserPermissionOverride(user.id, permissionCode, effect, currentUser.id, reason);
+
+    const overrides = await userStore.getUserPermissionOverrides(user.id);
+    const updatedUser = await getCurrentUser(user.address);
+
+    return {
+        employeeNo: user.employeeNo,
+        message: '权限配置已更新',
+        permissionOverrides: overrides,
+        permissions: updatedUser.permissions,
+    };
+}
+
+async function deleteUserPermissionOverride(address, employeeNo, permissionCode) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'role.manage', '当前用户无权管理用户权限');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    await userStore.deleteUserPermissionOverride(user.id, permissionCode);
+
+    const overrides = await userStore.getUserPermissionOverrides(user.id);
+
+    return {
+        employeeNo: user.employeeNo,
+        message: '权限配置已删除',
+        permissionOverrides: overrides,
+    };
+}
+
 module.exports = {
     preregisterUser,
     issueActivationChallenge,
@@ -533,4 +776,14 @@ module.exports = {
     updateUserForAdmin,
     listSignerTemplates,
     upsertSignerTemplate,
+    listActivationCodes,
+    regenerateActivationCode,
+    revokeActivationCode,
+    clearUserAddress,
+    resetUserToPending,
+    modifyUserAddress,
+    listAllPermissions,
+    getUserPermissions,
+    setUserPermissionOverride,
+    deleteUserPermissionOverride,
 };

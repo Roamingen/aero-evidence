@@ -106,10 +106,74 @@ async function consumeCode(codeId) {
     );
 }
 
+async function getActivationCodeByUserId(userId) {
+    const [rows] = await getPool().execute(
+        `SELECT id, user_id, code_hash, code_last4, expires_at, consumed_at, attempt_count, max_attempts, created_at
+         FROM activation_codes
+         WHERE user_id = ?
+           AND consumed_at IS NULL
+         ORDER BY id DESC
+         LIMIT 1`,
+        [userId]
+    );
+
+    const row = rows[0];
+    if (!row) {
+        return null;
+    }
+
+    return {
+        id: row.id,
+        userId: row.user_id,
+        codeHash: row.code_hash,
+        codeLast4: row.code_last4,
+        expiresAt: new Date(row.expires_at).toISOString(),
+        consumedAt: row.consumed_at,
+        attemptCount: row.attempt_count,
+        maxAttempts: row.max_attempts,
+        createdAt: row.created_at,
+    };
+}
+
+async function listAllActiveCodesByStatus() {
+    const [rows] = await getPool().execute(
+        `SELECT ac.id, ac.user_id, ac.code_last4, ac.expires_at, ac.consumed_at, ac.created_at,
+                u.employee_no, u.name, u.status
+         FROM activation_codes ac
+         INNER JOIN users u ON u.id = ac.user_id
+         WHERE ac.consumed_at IS NULL
+         ORDER BY ac.created_at DESC`
+    );
+
+    return rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        employeeNo: row.employee_no,
+        userName: row.name,
+        codeLast4: row.code_last4,
+        expiresAt: new Date(row.expires_at).toISOString(),
+        userStatus: row.status,
+        createdAt: row.created_at,
+    }));
+}
+
+async function revokeActivationCode(codeId) {
+    await getPool().execute(
+        `UPDATE activation_codes
+         SET consumed_at = CURRENT_TIMESTAMP
+         WHERE id = ?
+           AND consumed_at IS NULL`,
+        [codeId]
+    );
+}
+
 module.exports = {
     hashCode,
     issueCode,
     getLatestActiveCodeByUserId,
+    getActivationCodeByUserId,
     incrementAttempt,
     consumeCode,
+    listAllActiveCodesByStatus,
+    revokeActivationCode,
 };

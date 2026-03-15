@@ -219,6 +219,28 @@ async function bindAddressAndActivate(userId, address) {
     return findByAddress(normalizedAddress);
 }
 
+async function clearUserAddress(userId) {
+    await getPool().execute(
+        `UPDATE users
+         SET address = NULL,
+             status = 'pending_activation',
+             address_bound_at = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [userId]
+    );
+
+    const [rows] = await getPool().execute(
+        `SELECT id, employee_no, address, name, department, status, address_bound_at, created_at, updated_at, last_login_at
+         FROM users
+         WHERE id = ?
+         LIMIT 1`,
+        [userId]
+    );
+
+    return mapUserRow(rows[0] || null);
+}
+
 async function updateLastLoginAtByUserId(userId) {
     await getPool().execute(
         `UPDATE users
@@ -304,14 +326,148 @@ async function updateUserAdmin(employeeNo, payload, assignedBy = null) {
     return findByEmployeeNo(existingUser.employeeNo);
 }
 
+async function modifyUserAddress(userId, newAddress) {
+    const normalizedAddress = normalizeAddress(newAddress);
+
+    // Check if address is already used by another user
+    const [existingRows] = await getPool().execute(
+        `SELECT id FROM users WHERE address = ? AND id != ?`,
+        [normalizedAddress, userId]
+    );
+
+    if (existingRows.length > 0) {
+        const error = new Error('该地址已被其他用户使用');
+        error.statusCode = 409;
+        throw error;
+    }
+
+    await getPool().execute(
+        `UPDATE users
+         SET address = ?,
+             address_bound_at = CURRENT_TIMESTAMP,
+             status = 'active',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [normalizedAddress, userId]
+    );
+
+    const [rows] = await getPool().execute(
+        `SELECT id, employee_no, address, name, department, status, address_bound_at, created_at, updated_at, last_login_at
+         FROM users
+         WHERE id = ?
+         LIMIT 1`,
+        [userId]
+    );
+
+    return mapUserRow(rows[0] || null);
+}
+
+async function getAllPermissions() {
+    const [rows] = await getPool().execute(
+        `SELECT id, code, name, description
+         FROM permissions
+         ORDER BY code ASC`
+    );
+
+    return rows.map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        description: row.description,
+    }));
+}
+
+async function getUserPermissionOverrides(userId) {
+    const [rows] = await getPool().execute(
+        `SELECT upo.id, upo.permission_id, upo.effect, upo.reason, p.code, p.name
+         FROM user_permission_overrides upo
+         INNER JOIN permissions p ON p.id = upo.permission_id
+         WHERE upo.user_id = ?
+         ORDER BY p.code ASC`,
+        [userId]
+    );
+
+    return rows.map((row) => ({
+        id: row.id,
+        permissionId: row.permission_id,
+        permissionCode: row.code,
+        permissionName: row.name,
+        effect: row.effect,
+        reason: row.reason,
+    }));
+}
+
+async function setUserPermissionOverride(userId, permissionCode, effect, createdBy = null, reason = null) {
+    // Get permission id
+    const [permRows] = await getPool().execute(
+        `SELECT id FROM permissions WHERE code = ?`,
+        [permissionCode]
+    );
+
+    if (permRows.length === 0) {
+        const error = new Error(`权限 ${permissionCode} 不存在`);
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const permissionId = permRows[0].id;
+
+    // Check valid effect
+    const allowedEffects = new Set(['allow', 'deny']);
+    if (!allowedEffects.has(effect)) {
+        const error = new Error(`无效的权限效果: ${effect}`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    // Insert or update override
+    await getPool().execute(
+        `INSERT INTO user_permission_overrides (user_id, permission_id, effect, reason, created_by)
+         VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+         effect = VALUES(effect),
+         reason = VALUES(reason),
+         created_by = VALUES(created_by)`,
+        [userId, permissionId, effect, reason || null, createdBy || null]
+    );
+}
+
+async function deleteUserPermissionOverride(userId, permissionCode) {
+    // Get permission id
+    const [permRows] = await getPool().execute(
+        `SELECT id FROM permissions WHERE code = ?`,
+        [permissionCode]
+    );
+
+    if (permRows.length === 0) {
+        const error = new Error(`权限 ${permissionCode} 不存在`);
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const permissionId = permRows[0].id;
+
+    await getPool().execute(
+        `DELETE FROM user_permission_overrides
+         WHERE user_id = ? AND permission_id = ?`,
+        [userId, permissionId]
+    );
+}
+
 module.exports = {
     findByAddress,
     findByEmployeeNo,
     createPendingUser,
     updatePendingUser,
     bindAddressAndActivate,
+    clearUserAddress,
     updateLastLoginAtByUserId,
     listUsers,
     listRoleCatalog,
     updateUserAdmin,
+    modifyUserAddress,
+    getAllPermissions,
+    getUserPermissionOverrides,
+    setUserPermissionOverride,
+    deleteUserPermissionOverride,
 };

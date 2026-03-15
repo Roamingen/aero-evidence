@@ -5,20 +5,10 @@ import { parseJsonResponse } from '../utils/http';
 import { buildApiUrl } from '../utils/apiBase';
 import { createRandomWallet, createWalletFromPrivateKey } from '../utils/wallet';
 
-function createInitialPreregisterForm() {
-  return {
-    bootstrapKey: 'change-this-bootstrap-key',
-    employeeNo: '',
-    name: '',
-    department: '机务一部',
-    roleCodes: ['engineer_submitter'],
-  };
-}
-
-function createInitialActivationForm() {
+function createInitialRegisterForm() {
   return {
     employeeNo: '',
-    activationCode: '',
+    invitationCode: '',
     privateKey: '',
   };
 }
@@ -92,25 +82,21 @@ function persistLoginResult(result) {
   );
 }
 
-const activeAuthTab = ref('preregister');
-const preregisterForm = ref(createInitialPreregisterForm());
-const activationForm = ref(createInitialActivationForm());
+const activeAuthTab = ref('login');
+const registerForm = ref(createInitialRegisterForm());
 const loginForm = ref(createInitialLoginForm());
 
-const preregisterLoading = ref(false);
-const activationLoading = ref(false);
+const registerLoading = ref(false);
 const loginLoading = ref(false);
 
-const preregisterResult = ref(null);
-const activationChallenge = ref(null);
-const activationResult = ref(null);
+const registerChallenge = ref(null);
+const registerDerivedAddress = ref('');
+const registerResult = ref(null);
+
 const loginResult = ref(loadPersistedLoginResult());
 const loginChallenge = ref(null);
-
-const activationDerivedAddress = ref('');
 const loginDerivedAddress = ref('');
 
-const latestActivatedUser = computed(() => activationResult.value?.user || null);
 const latestLoggedInUser = computed(() => loginResult.value?.user || null);
 const isLoggedIn = computed(() => Boolean(loginResult.value?.token && latestLoggedInUser.value));
 const currentPermissionCodes = computed(() => latestLoggedInUser.value?.permissions || []);
@@ -151,13 +137,6 @@ function getDefaultWorkspaceRoute() {
   return '/auth';
 }
 
-function generateActivationWallet() {
-  const wallet = createRandomWallet();
-  activationForm.value.privateKey = wallet.privateKey;
-  activationDerivedAddress.value = wallet.address;
-  ElMessage.success('已生成测试钱包');
-}
-
 function generateLoginWallet() {
   const wallet = createRandomWallet();
   loginForm.value.privateKey = wallet.privateKey;
@@ -165,73 +144,44 @@ function generateLoginWallet() {
   ElMessage.success('已生成测试钱包');
 }
 
-async function handlePreregister() {
-  try {
-    preregisterLoading.value = true;
-    preregisterResult.value = null;
-
-    const response = await fetch(buildApiUrl('/api/auth/admin/preregister'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-bootstrap-key': preregisterForm.value.bootstrapKey,
-      },
-      body: JSON.stringify({
-        employeeNo: preregisterForm.value.employeeNo,
-        name: preregisterForm.value.name,
-        department: preregisterForm.value.department,
-        roleCodes: preregisterForm.value.roleCodes,
-      }),
-    });
-
-    const data = await parseJsonResponse(response);
-    if (!response.ok) {
-      throw new Error(data.message || '预注册失败');
-    }
-
-    preregisterResult.value = data;
-    activationForm.value.employeeNo = data.user.employeeNo;
-    activationForm.value.activationCode = data.activationCode;
-    activeAuthTab.value = 'activate';
-    ElMessage.success('预注册成功，已生成激活码');
-  } catch (error) {
-    ElMessage.error(error.message || '预注册失败');
-  } finally {
-    preregisterLoading.value = false;
-  }
+function generateRegisterWallet() {
+  const wallet = createRandomWallet();
+  registerForm.value.privateKey = wallet.privateKey;
+  registerDerivedAddress.value = wallet.address;
+  ElMessage.success('已生成测试钱包');
 }
 
-async function handleActivate() {
+async function handleRegister() {
   try {
-    activationLoading.value = true;
-    activationResult.value = null;
+    registerLoading.value = true;
+    registerResult.value = null;
 
-    const wallet = createWalletFromPrivateKey(activationForm.value.privateKey);
-    activationDerivedAddress.value = wallet.address;
+    const wallet = createWalletFromPrivateKey(registerForm.value.privateKey);
+    registerDerivedAddress.value = wallet.address;
 
     const challengeResponse = await fetch(buildApiUrl('/api/auth/activate/challenge'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        employeeNo: activationForm.value.employeeNo,
-        activationCode: activationForm.value.activationCode,
+        employeeNo: registerForm.value.employeeNo,
+        activationCode: registerForm.value.invitationCode,
         address: wallet.address,
       }),
     });
 
     const challengeData = await parseJsonResponse(challengeResponse);
     if (!challengeResponse.ok) {
-      throw new Error(challengeData.message || '获取激活挑战失败');
+      throw new Error(challengeData.message || '获取注册挑战失败');
     }
 
-    activationChallenge.value = challengeData;
+    registerChallenge.value = challengeData;
     const signature = await wallet.signMessage(challengeData.message);
 
     const verifyResponse = await fetch(buildApiUrl('/api/auth/activate/verify'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        employeeNo: activationForm.value.employeeNo,
+        employeeNo: registerForm.value.employeeNo,
         address: wallet.address,
         signature,
       }),
@@ -239,21 +189,21 @@ async function handleActivate() {
 
     const verifyData = await parseJsonResponse(verifyResponse);
     if (!verifyResponse.ok) {
-      throw new Error(verifyData.message || '激活失败');
+      throw new Error(verifyData.message || '注册失败');
     }
 
-    activationResult.value = {
+    registerResult.value = {
       ...verifyData,
       signature,
     };
-    loginForm.value.privateKey = activationForm.value.privateKey;
+    loginForm.value.privateKey = registerForm.value.privateKey;
     loginDerivedAddress.value = wallet.address;
     activeAuthTab.value = 'login';
-    ElMessage.success('账户已激活，可以直接登录');
+    ElMessage.success('账户已注册，请登录');
   } catch (error) {
-    ElMessage.error(error.message || '激活失败');
+    ElMessage.error(error.message || '注册失败');
   } finally {
-    activationLoading.value = false;
+    registerLoading.value = false;
   }
 }
 
@@ -356,48 +306,41 @@ async function initializeAuthSession() {
 }
 
 function resetAuthSession() {
-  preregisterForm.value = createInitialPreregisterForm();
-  activationForm.value = createInitialActivationForm();
+  registerForm.value = createInitialRegisterForm();
   loginForm.value = createInitialLoginForm();
-  preregisterResult.value = null;
-  activationChallenge.value = null;
-  activationResult.value = null;
+  registerResult.value = null;
+  registerChallenge.value = null;
   loginResult.value = null;
   loginChallenge.value = null;
-  activationDerivedAddress.value = '';
+  registerDerivedAddress.value = '';
   loginDerivedAddress.value = '';
-  activeAuthTab.value = 'preregister';
+  activeAuthTab.value = 'login';
 }
 
 export function useAuthSession() {
   return {
     activeAuthTab,
-    activationChallenge,
-    activationDerivedAddress,
-    activationForm,
-    activationLoading,
-    activationResult,
-    generateActivationWallet,
     generateLoginWallet,
-    handleActivate,
+    generateRegisterWallet,
     handleLogin,
-    handlePreregister,
+    handleRegister,
     hasAnyPermission,
     hasPermission,
     initializeAuthSession,
     isLoggedIn,
-    latestActivatedUser,
-    latestLoggedInUser,
-    currentPermissionCodes,
     loginChallenge,
     loginDerivedAddress,
     loginForm,
     loginLoading,
     loginResult,
-    preregisterForm,
-    preregisterLoading,
-    preregisterResult,
+    latestLoggedInUser,
+    currentPermissionCodes,
     getDefaultWorkspaceRoute,
+    registerChallenge,
+    registerDerivedAddress,
+    registerForm,
+    registerLoading,
+    registerResult,
     resetAuthSession,
   };
 }

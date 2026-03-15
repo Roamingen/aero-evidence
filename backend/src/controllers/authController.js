@@ -2,8 +2,7 @@ const authService = require('../services/authService');
 
 async function preregisterUser(req, res, next) {
     try {
-        const bootstrapKey = req.headers['x-admin-bootstrap-key'];
-        const result = await authService.preregisterUser(bootstrapKey, req.body || {});
+        const result = await authService.preregisterUser(req.auth.address, req.body || {});
         res.status(201).json(result);
     } catch (error) {
         next(error);
@@ -104,6 +103,106 @@ async function upsertSignerTemplate(req, res, next) {
     }
 }
 
+async function listActivationCodes(req, res, next) {
+    try {
+        const codes = await authService.listActivationCodes(req.auth.address);
+        res.status(200).json({ codes });
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function regenerateActivationCode(req, res, next) {
+    try {
+        const result = await authService.regenerateActivationCode(req.auth.address, req.params.employeeNo);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function revokeActivationCode(req, res, next) {
+    try {
+        const result = await authService.revokeActivationCode(req.auth.address, req.params.employeeNo);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function clearUserAddress(req, res, next) {
+    try {
+        const result = await authService.clearUserAddress(req.auth.address, req.params.employeeNo);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function resetUserToPending(req, res, next) {
+    try {
+        const result = await authService.resetUserToPending(req.auth.address, req.params.employeeNo);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function modifyUserAddress(req, res, next) {
+    try {
+        const result = await authService.modifyUserAddress(req.auth.address, req.params.employeeNo, req.body.address);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function listAllPermissions(req, res, next) {
+    try {
+        const permissions = await authService.listAllPermissions(req.auth.address);
+        res.status(200).json({ permissions });
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function getUserPermissions(req, res, next) {
+    try {
+        const result = await authService.getUserPermissions(req.auth.address, req.params.employeeNo);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function setUserPermissionOverride(req, res, next) {
+    try {
+        const result = await authService.setUserPermissionOverride(
+            req.auth.address,
+            req.params.employeeNo,
+            req.body.permissionCode,
+            req.body.effect,
+            req.body.reason || null
+        );
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function deleteUserPermissionOverride(req, res, next) {
+    try {
+        const result = await authService.deleteUserPermissionOverride(
+            req.auth.address,
+            req.params.employeeNo,
+            req.body.permissionCode
+        );
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     preregisterUser,
     issueActivationChallenge,
@@ -116,4 +215,14 @@ module.exports = {
     updateUser,
     listSignerTemplates,
     upsertSignerTemplate,
+    listActivationCodes,
+    regenerateActivationCode,
+    revokeActivationCode,
+    clearUserAddress,
+    resetUserToPending,
+    modifyUserAddress,
+    listAllPermissions,
+    getUserPermissions,
+    setUserPermissionOverride,
+    deleteUserPermissionOverride,
 };

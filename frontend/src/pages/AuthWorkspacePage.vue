@@ -6,213 +6,667 @@ import { useAuthSession } from '../stores/authSession';
 const router = useRouter();
 const auth = useAuthSession();
 
-function formatJson(value) {
-  return JSON.stringify(value, null, 2);
-}
-
 async function handleLoginAndGoMaintenance() {
   await auth.handleLogin();
   if (auth.isLoggedIn.value) {
     router.push(auth.getDefaultWorkspaceRoute());
   }
 }
+
+async function handleRegisterAndLogin() {
+  await auth.handleRegister();
+}
 </script>
 
 <template>
   <div class="auth-shell">
-    <section class="auth-showcase">
-      <div class="auth-kicker">Aviation Maintenance Identity</div>
-      <h1 class="auth-title">独立认证入口</h1>
-      <p class="auth-copy">
-        认证页单独存在，只负责预注册、激活和登录。登录完成后进入业务后台，不把账号生命周期和业务模块混在一起。
-      </p>
+    <!-- 背景动画 -->
+    <div class="bg-animation">
+      <div class="plane"></div>
+      <div class="plane"></div>
+      <div class="plane"></div>
+    </div>
 
-      <div class="auth-highlight-grid">
-        <article class="auth-highlight-card">
-          <div class="auth-highlight-label">生命周期</div>
-          <div class="auth-highlight-value">预注册 / 激活 / 登录</div>
-        </article>
-        <article class="auth-highlight-card">
-          <div class="auth-highlight-label">认证方式</div>
-          <div class="auth-highlight-value">钱包签名 + JWT</div>
-        </article>
-        <article class="auth-highlight-card">
-          <div class="auth-highlight-label">进入后台</div>
-          <div class="auth-highlight-value">提交 / 查阅 / 人员管理</div>
-        </article>
-      </div>
-    </section>
-
-    <section class="auth-console">
-      <div class="auth-console-card">
-        <div class="auth-console-header">
-          <div>
-            <div class="card-title">身份认证</div>
-            <div class="card-subtitle">完成登录后自动进入业务工作台</div>
-          </div>
+    <!-- 认证卡片 -->
+    <div class="auth-container">
+      <div class="auth-card">
+        <!-- 卡片头部 -->
+        <div class="auth-header">
+          <h1 class="auth-title">飞机检修系统</h1>
+          <p class="auth-subtitle">Aviation Maintenance System</p>
         </div>
 
-        <el-tabs v-model="auth.activeAuthTab.value" class="flow-tabs">
-          <el-tab-pane label="1. 预注册" name="preregister">
-            <el-form label-position="top">
-              <el-form-item label="管理员 Bootstrap Key">
-                <el-input v-model="auth.preregisterForm.value.bootstrapKey" show-password />
-              </el-form-item>
+        <!-- Tab 标签 -->
+        <div class="tab-header">
+          <button
+            v-for="tab in ['login', 'register']"
+            :key="tab"
+            :class="['tab-button', { active: auth.activeAuthTab.value === tab }]"
+            @click="auth.activeAuthTab.value = tab"
+          >
+            {{ tab === 'login' ? '登录' : '注册' }}
+          </button>
+        </div>
 
-              <div class="form-grid two-col">
-                <el-form-item label="工号">
-                  <el-input v-model="auth.preregisterForm.value.employeeNo" placeholder="例如 E1001" />
-                </el-form-item>
-                <el-form-item label="姓名">
-                  <el-input v-model="auth.preregisterForm.value.name" placeholder="例如 张工" />
-                </el-form-item>
-              </div>
-
-              <div class="form-grid two-col">
-                <el-form-item label="部门">
-                  <el-input v-model="auth.preregisterForm.value.department" placeholder="例如 机务一部" />
-                </el-form-item>
-                <el-form-item label="角色">
-                  <el-select v-model="auth.preregisterForm.value.roleCodes" multiple placeholder="选择角色" style="width: 100%">
-                    <el-option label="检修填报工程师" value="engineer_submitter" />
-                    <el-option label="放行工程师" value="engineer_approver" />
-                    <el-option label="系统管理员" value="admin" />
-                  </el-select>
-                </el-form-item>
-              </div>
-
-              <div class="button-row">
-                <el-button type="primary" :loading="auth.preregisterLoading.value" @click="auth.handlePreregister">
-                  提交预注册
-                </el-button>
-              </div>
-            </el-form>
-
-            <div v-if="auth.preregisterResult.value" class="result-stack">
-              <div class="result-block accent-block">
-                <div class="result-label">激活码</div>
-                <div class="activation-code">{{ auth.preregisterResult.value.activationCode }}</div>
-                <div class="result-subtext">请模拟管理员私下把激活码发给员工。末四位 {{ auth.preregisterResult.value.activationCodeLast4 }}</div>
-              </div>
-
-              <div class="result-block">
-                <div class="result-label">预注册结果</div>
-                <pre class="mono json-box">{{ formatJson(auth.preregisterResult.value) }}</pre>
-              </div>
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane label="2. 激活" name="activate">
-            <el-form label-position="top">
-              <div class="form-grid two-col">
-                <el-form-item label="工号">
-                  <el-input v-model="auth.activationForm.value.employeeNo" />
-                </el-form-item>
-                <el-form-item label="激活码">
-                  <el-input v-model="auth.activationForm.value.activationCode" />
-                </el-form-item>
-              </div>
-
-              <el-form-item label="员工私钥">
-                <el-input
-                  v-model="auth.activationForm.value.privateKey"
-                  type="textarea"
-                  :rows="4"
-                  resize="none"
-                  placeholder="输入员工自持私钥，或点下方按钮生成测试钱包"
-                  show-password
-                />
-              </el-form-item>
-
-              <div class="button-row">
-                <el-button @click="auth.generateActivationWallet">生成测试钱包</el-button>
-                <el-button type="primary" :loading="auth.activationLoading.value" @click="auth.handleActivate">
-                  发起激活并绑定地址
-                </el-button>
-              </div>
-            </el-form>
-
-            <div v-if="auth.activationDerivedAddress.value" class="result-block">
-              <div class="result-label">激活使用地址</div>
-              <div class="result-value mono">{{ auth.activationDerivedAddress.value }}</div>
-            </div>
-
-            <div v-if="auth.activationChallenge.value" class="result-block">
-              <div class="result-label">激活挑战消息</div>
-              <pre class="mono challenge-box">{{ auth.activationChallenge.value.message }}</pre>
-            </div>
-
-            <div v-if="auth.latestActivatedUser.value" class="result-block">
-              <div class="result-label">激活结果</div>
-              <el-descriptions :column="1" border>
-                <el-descriptions-item label="工号">{{ auth.latestActivatedUser.value.employeeNo }}</el-descriptions-item>
-                <el-descriptions-item label="地址">{{ auth.latestActivatedUser.value.address }}</el-descriptions-item>
-                <el-descriptions-item label="状态">{{ auth.latestActivatedUser.value.status }}</el-descriptions-item>
-                <el-descriptions-item label="姓名">{{ auth.latestActivatedUser.value.name }}</el-descriptions-item>
-                <el-descriptions-item label="部门">{{ auth.latestActivatedUser.value.department }}</el-descriptions-item>
-              </el-descriptions>
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane label="3. 登录" name="login">
-            <el-form label-position="top">
-              <el-form-item label="已绑定地址的私钥">
+        <!-- 内容区域 -->
+        <div class="tab-content">
+          <!-- 登录表单 -->
+          <div v-show="auth.activeAuthTab.value === 'login'" class="form-panel">
+            <el-form label-position="top" class="auth-form">
+              <el-form-item label="私钥">
                 <el-input
                   v-model="auth.loginForm.value.privateKey"
                   type="textarea"
-                  :rows="4"
+                  :rows="3"
                   resize="none"
-                  placeholder="输入已完成激活的钱包私钥"
+                  placeholder="输入你的私钥，或点下方按钮生成测试钱包"
                   show-password
                 />
               </el-form-item>
 
-              <div class="button-row">
-                <el-button @click="auth.generateLoginWallet">生成测试钱包</el-button>
-                <el-button type="primary" :loading="auth.loginLoading.value" @click="handleLoginAndGoMaintenance">
-                  发起登录
+              <div class="button-group">
+                <el-button @click="auth.generateLoginWallet" class="secondary-btn">
+                  生成测试钱包
+                </el-button>
+                <el-button
+                  type="primary"
+                  :loading="auth.loginLoading.value"
+                  @click="handleLoginAndGoMaintenance"
+                  class="primary-btn"
+                >
+                  登录
                 </el-button>
               </div>
             </el-form>
 
-            <div v-if="auth.loginDerivedAddress.value" class="result-block">
-              <div class="result-label">登录地址</div>
-              <div class="result-value mono">{{ auth.loginDerivedAddress.value }}</div>
-            </div>
+            <!-- 登录结果 -->
+            <transition name="fade">
+              <div v-if="auth.loginDerivedAddress.value" class="result-section">
+                <div class="result-item">
+                  <span class="result-label">登录地址</span>
+                  <span class="result-value">{{ auth.loginDerivedAddress.value }}</span>
+                </div>
+              </div>
+            </transition>
 
-            <div v-if="auth.loginChallenge.value" class="result-block">
-              <div class="result-label">登录挑战消息</div>
-              <pre class="mono challenge-box">{{ auth.loginChallenge.value.message }}</pre>
-            </div>
+            <transition name="fade">
+              <div v-if="auth.latestLoggedInUser.value" class="user-info">
+                <div class="info-title">✓ 登录成功</div>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">工号</span>
+                    <span class="info-value">{{ auth.latestLoggedInUser.value.employeeNo }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">姓名</span>
+                    <span class="info-value">{{ auth.latestLoggedInUser.value.name }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">部门</span>
+                    <span class="info-value">{{ auth.latestLoggedInUser.value.department }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">状态</span>
+                    <span class="info-value">{{ auth.latestLoggedInUser.value.status }}</span>
+                  </div>
+                </div>
+              </div>
+            </transition>
+          </div>
 
-            <div v-if="auth.latestLoggedInUser.value" class="result-stack">
-              <div class="result-block">
-                <div class="result-label">当前用户</div>
-                <el-descriptions :column="1" border>
-                  <el-descriptions-item label="工号">{{ auth.latestLoggedInUser.value.employeeNo }}</el-descriptions-item>
-                  <el-descriptions-item label="地址">{{ auth.latestLoggedInUser.value.address }}</el-descriptions-item>
-                  <el-descriptions-item label="姓名">{{ auth.latestLoggedInUser.value.name }}</el-descriptions-item>
-                  <el-descriptions-item label="部门">{{ auth.latestLoggedInUser.value.department }}</el-descriptions-item>
-                  <el-descriptions-item label="状态">{{ auth.latestLoggedInUser.value.status }}</el-descriptions-item>
-                  <el-descriptions-item label="角色">
-                    <el-tag v-for="role in auth.latestLoggedInUser.value.roles" :key="role" class="role-tag">{{ role }}</el-tag>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="权限">
-                    <el-tag v-for="permission in auth.latestLoggedInUser.value.permissions" :key="permission" type="success" class="role-tag">
-                      {{ permission }}
-                    </el-tag>
-                  </el-descriptions-item>
-                </el-descriptions>
+          <!-- 注册表单 -->
+          <div v-show="auth.activeAuthTab.value === 'register'" class="form-panel">
+            <el-form label-position="top" class="auth-form">
+              <div class="form-row">
+                <div class="form-col">
+                  <el-form-item label="工号">
+                    <el-input v-model="auth.registerForm.value.employeeNo" placeholder="输入工号" />
+                  </el-form-item>
+                </div>
+                <div class="form-col">
+                  <el-form-item label="邀请码">
+                    <el-input v-model="auth.registerForm.value.invitationCode" placeholder="输入邀请码" />
+                  </el-form-item>
+                </div>
               </div>
 
-              <div class="result-block">
-                <div class="result-label">JWT Token</div>
-                <pre class="mono token-box">{{ auth.loginResult.value.token }}</pre>
+              <el-form-item label="私钥">
+                <el-input
+                  v-model="auth.registerForm.value.privateKey"
+                  type="textarea"
+                  :rows="3"
+                  resize="none"
+                  placeholder="输入你的私钥，或点下方按钮生成测试钱包"
+                  show-password
+                />
+              </el-form-item>
+
+              <div class="button-group">
+                <el-button @click="auth.generateRegisterWallet" class="secondary-btn">
+                  生成测试钱包
+                </el-button>
+                <el-button
+                  type="primary"
+                  :loading="auth.registerLoading.value"
+                  @click="handleRegisterAndLogin"
+                  class="primary-btn"
+                >
+                  注册
+                </el-button>
               </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
+            </el-form>
+
+            <!-- 注册结果 -->
+            <transition name="fade">
+              <div v-if="auth.registerDerivedAddress.value" class="result-section">
+                <div class="result-item">
+                  <span class="result-label">注册地址</span>
+                  <span class="result-value">{{ auth.registerDerivedAddress.value }}</span>
+                </div>
+              </div>
+            </transition>
+
+            <transition name="fade">
+              <div v-if="auth.registerResult.value" class="user-info">
+                <div class="info-title">✓ 注册成功</div>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">工号</span>
+                    <span class="info-value">{{ auth.registerResult.value.user.employeeNo }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">状态</span>
+                    <span class="info-value">{{ auth.registerResult.value.user.status }}</span>
+                  </div>
+                </div>
+              </div>
+            </transition>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   </div>
 </template>
+
+<style scoped>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.auth-shell {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(16, 36, 59, 0.03) 0px,
+      rgba(16, 36, 59, 0.03) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(16, 36, 59, 0.03) 0px,
+      rgba(16, 36, 59, 0.03) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    radial-gradient(circle at top left, rgba(95, 160, 255, 0.35), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(255, 156, 102, 0.3), transparent 35%),
+    linear-gradient(140deg, #f0f6fb 0%, #f8fafc 45%, #fffaf5 100%);
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  z-index: 1000;
+}
+
+/* 背景动画 */
+.bg-animation {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.plane {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="rgba(16,36,59,0.08)" d="M90 50L10 30V70L90 50Z"/><path fill="rgba(16,36,59,0.12)" d="M90 50L50 40V60L90 50Z"/></svg>') no-repeat center;
+  animation: fly 20s linear infinite;
+}
+
+.plane:nth-child(1) {
+  top: 20%;
+  animation-delay: 0s;
+  animation-duration: 25s;
+}
+
+.plane:nth-child(2) {
+  top: 40%;
+  animation-delay: -5s;
+  animation-duration: 30s;
+}
+
+.plane:nth-child(3) {
+  top: 60%;
+  animation-delay: -10s;
+  animation-duration: 20s;
+}
+
+@keyframes fly {
+  0% {
+    transform: translateX(-100px) translateY(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(100vw + 100px)) translateY(-50px) rotate(10deg);
+    opacity: 0;
+  }
+}
+
+/* 认证容器 */
+.auth-container {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 480px;
+  padding: 20px;
+  animation: slideUp 0.8s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+/* 卡片头部 */
+.auth-header {
+  padding: 40px 32px 30px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(16, 36, 59, 0.05) 0%, rgba(24, 58, 93, 0.05) 100%);
+  border-bottom: 1px solid rgba(16, 36, 59, 0.1);
+  animation: fadeIn 0.8s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.auth-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #10243b;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.auth-subtitle {
+  font-size: 13px;
+  color: #607087;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+/* Tab 标签 */
+.tab-header {
+  display: flex;
+  border-bottom: 2px solid #f0f0f0;
+  position: relative;
+  padding: 0 32px;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 16px;
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  position: relative;
+}
+
+.tab-button.active {
+  color: #10243b;
+}
+
+.tab-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #10243b;
+  animation: underlineSlide 0.3s ease-out;
+}
+
+@keyframes underlineSlide {
+  from {
+    width: 0;
+    left: 50%;
+  }
+  to {
+    width: 100%;
+    left: 0;
+  }
+}
+
+/* 内容区域 */
+.tab-content {
+  padding: 32px;
+  min-height: 300px;
+}
+
+.form-panel {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.auth-form {
+  width: 100%;
+}
+
+/* 表单元素 */
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 13px;
+  font-weight: 600;
+  color: #10243b;
+  margin-bottom: 8px !important;
+}
+
+:deep(.el-input) {
+  width: 100%;
+}
+
+:deep(.el-input__wrapper) {
+  background: #ffffff !important;
+  border: 2px solid #e8e8e8 !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+  box-shadow: none !important;
+}
+
+:deep(.el-input__wrapper:hover) {
+  border-color: #d0d0d0 !important;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  border-color: #10243b !important;
+  box-shadow: 0 0 0 3px rgba(16, 36, 59, 0.1) !important;
+}
+
+:deep(.el-input__inner) {
+  background: transparent !important;
+  border: none !important;
+  font-size: 14px !important;
+  color: #333 !important;
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: #999 !important;
+}
+
+:deep(.el-textarea__wrapper) {
+  background: #ffffff !important;
+  border: 2px solid #e8e8e8 !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+:deep(.el-textarea__wrapper:hover) {
+  border-color: #d0d0d0 !important;
+}
+
+:deep(.el-textarea__wrapper.is-focus) {
+  border-color: #10243b !important;
+  box-shadow: 0 0 0 3px rgba(16, 36, 59, 0.1) !important;
+}
+
+:deep(.el-textarea__inner) {
+  background: transparent !important;
+  border: none !important;
+  font-size: 14px !important;
+  color: #333 !important;
+  padding: 12px 14px !important;
+}
+
+:deep(.el-textarea__inner::placeholder) {
+  color: #999 !important;
+}
+
+/* 表单布局 */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.form-col {
+  width: 100%;
+}
+
+.form-col :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
+/* 按钮组 */
+.button-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.primary-btn {
+  flex: 1;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #10243b 0%, #183a5d 100%) !important;
+  border: none !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 4px 15px rgba(16, 36, 59, 0.3) !important;
+}
+
+.primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 36, 59, 0.4) !important;
+}
+
+.primary-btn:active {
+  transform: translateY(0);
+}
+
+.secondary-btn {
+  height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  background: #f5f5f5 !important;
+  border: 2px solid #e8e8e8 !important;
+  color: #333 !important;
+  transition: all 0.3s ease !important;
+}
+
+.secondary-btn:hover {
+  background: #efefef !important;
+  border-color: #d8d8d8 !important;
+}
+
+/* 结果展示 */
+.result-section {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f0f7ff;
+  border-radius: 8px;
+  border-left: 3px solid #10243b;
+}
+
+.result-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.result-value {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #333;
+  word-break: break-all;
+  background: white;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+}
+
+/* 用户信息 */
+.user-info {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f0f7ff;
+  border-radius: 8px;
+  border: 1px solid #b3d9ff;
+}
+
+.info-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0d47a1;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* 过渡动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 600px) {
+  .auth-container {
+    max-width: 100%;
+    padding: 12px;
+  }
+
+  .auth-card {
+    border-radius: 12px;
+  }
+
+  .auth-header {
+    padding: 24px 20px 16px;
+  }
+
+  .auth-title {
+    font-size: 22px;
+  }
+
+  .tab-header {
+    padding: 0 20px;
+  }
+
+  .tab-content {
+    padding: 20px;
+    min-height: auto;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
