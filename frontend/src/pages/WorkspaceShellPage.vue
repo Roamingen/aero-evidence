@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
-import { CircleCheck, DocumentAdd, Document, User, Expand, Fold, Picture } from '@element-plus/icons-vue';
+import { CircleCheck, DocumentAdd, Document, User, Expand, Fold, Picture, HomeFilled } from '@element-plus/icons-vue';
 import { useAuthSession } from '../stores/authSession';
 
 const route = useRoute();
@@ -11,6 +11,14 @@ const auth = useAuthSession();
 const sidebarCollapsed = ref(false);
 
 const navItems = [
+  {
+    label: '首页',
+    caption: '系统概览与区块链浏览器',
+    icon: 'HomeFilled',
+    to: '/workspace/home',
+    routeName: 'home',
+    requiredPermissions: [],
+  },
   {
     label: '审批工作台',
     caption: '待审核、待放行与驳回处理',
@@ -67,6 +75,7 @@ const toggleLabel = computed(() => (sidebarCollapsed.value ? '展开侧栏' : '�
 const toggleIconComponent = computed(() => (sidebarCollapsed.value ? Expand : Fold));
 
 const iconComponents = {
+  HomeFilled,
   CircleCheck,
   DocumentAdd,
   Document,

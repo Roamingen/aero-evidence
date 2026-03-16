@@ -123,16 +123,16 @@ function hasAnyPermission(permissionCodes = []) {
 
 function getDefaultWorkspaceRoute() {
   if (hasAnyPermission(['record.create', 'record.submit'])) {
-    return '/workspace/submit';
+    return '/workspace/home';
   }
   if (hasAnyPermission(['record.view'])) {
-    return '/workspace/records';
+    return '/workspace/home';
   }
   if (hasAnyPermission(['record.approve'])) {
-    return '/workspace/approvals';
+    return '/workspace/home';
   }
   if (hasAnyPermission(['user.manage', 'role.manage', 'user.preregister'])) {
-    return '/workspace/users';
+    return '/workspace/home';
   }
   return '/auth';
 }

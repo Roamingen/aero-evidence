@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { ElMessage } from 'element-plus';
 
 import AuthWorkspacePage from '../pages/AuthWorkspacePage.vue';
+import HomePage from '../pages/HomePage.vue';
 import MaintenanceSubmitPage from '../pages/MaintenanceSubmitPage.vue';
 import RecordsCenterPage from '../pages/RecordsCenterPage.vue';
 import UserManagementPage from '../pages/UserManagementPage.vue';
@@ -20,7 +21,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/workspace/submit',
+      redirect: '/workspace/home',
     },
     {
       path: '/auth',
@@ -36,7 +37,15 @@ const router = createRouter({
       children: [
         {
           path: '',
-          redirect: '/workspace/submit',
+          redirect: '/workspace/home',
+        },
+        {
+          path: 'home',
+          name: 'home',
+          component: HomePage,
+          meta: {
+            requiresAuth: true,
+          },
         },
         {
           path: 'approvals',

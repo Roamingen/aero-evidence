@@ -732,10 +732,24 @@ input {
     background: linear-gradient(145deg, rgba(16, 36, 59, 0.98), rgba(27, 68, 107, 0.95));
 }
 
-.light-title,
-.light-copy,
+.primary-summary-card .module-title {
+    color: #f5f9ff;
+}
+
+.primary-summary-card .module-subtitle {
+    color: rgba(245, 249, 255, 0.78);
+}
+
 .light-count {
     color: #f5f9ff;
+}
+
+.light-title {
+    color: #f5f9ff;
+}
+
+.light-copy {
+    color: rgba(245, 249, 255, 0.78);
 }
 
 .users-page-grid {
@@ -751,6 +765,10 @@ input {
     font-size: 2rem;
     font-weight: 800;
     color: #15253b;
+}
+
+.primary-summary-card .member-card-count {
+    color: #f5f9ff;
 }
 
 .config-stack {

@@ -130,19 +130,28 @@ function Stop-ServiceByPort {
     $port = [int]$Service.Port
     $listeners = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue
     if (-not $listeners) {
-        Write-Host "No listening process found on port $port for $($Service.Title)."
+        Write-Host "Port $port is available."
         return
     }
 
     foreach ($listener in $listeners) {
         $processId = $listener.OwningProcess
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        $processName = $process.ProcessName
+
         if ($DryRun) {
-            Write-Host "[$($Service.Name)] stop process $processId on port $port"
+            Write-Host "[$($Service.Name)] Would stop process $processId ($processName) on port $port"
             continue
         }
 
-        Write-Host "Stopping process $processId on port $port for $($Service.Title)..."
-        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        Write-Host "Killing process $processId ($processName) on port $port for $($Service.Title)..."
+        try {
+            Stop-Process -Id $processId -Force -ErrorAction Stop
+            Write-Host "✓ Successfully killed process on port $port"
+        }
+        catch {
+            Write-Warning "Failed to kill process on port $port. You may need to run as Administrator: $_"
+        }
     }
 }
 
@@ -235,7 +244,12 @@ Run-BackendCommand -Command 'db:seed:demo-records'
 
 Start-ServiceWindow -Service $services[1]
 if (-not $DryRun) {
-    Wait-HttpReady -Uri 'http://127.0.0.1:5001/health' -TimeoutSeconds 30 -Label 'image detector service'
+    try {
+        Wait-HttpReady -Uri 'http://127.0.0.1:5001/health' -TimeoutSeconds 30 -Label 'image detector service'
+    }
+    catch {
+        Write-Warning "Image Detector service failed to start: $_. Continuing without it..."
+    }
 }
 
 Start-ServiceWindow -Service $services[2]
