@@ -121,13 +121,13 @@ function resetWorkspace() {
             </template>
           </el-menu-item>
         </el-menu>
-
-        <button type="button" class="workspace-toggle-entry" @click="toggleSidebar" :title="toggleLabel">
-          <el-icon class="workspace-nav-icon" :size="28">
-            <component :is="toggleIconComponent" />
-          </el-icon>
-        </button>
       </div>
+
+      <button type="button" class="workspace-toggle-entry" @click="toggleSidebar" :title="toggleLabel">
+        <el-icon class="workspace-nav-icon" :size="28">
+          <component :is="toggleIconComponent" />
+        </el-icon>
+      </button>
 
       <div class="workspace-sidebar-footer">
         <div v-if="currentUser" class="workspace-user-card" :class="{ 'is-collapsed': sidebarCollapsed }">

@@ -66,7 +66,7 @@ input {
 
 .workspace-sidebar {
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto 1fr auto auto;
     gap: 1.4rem;
     align-self: start;
     position: sticky;
@@ -74,18 +74,29 @@ input {
     width: var(--sidebar-width);
     height: 100vh;
     overflow: hidden;
+    overflow-x: clip;
     padding: 1.35rem 1.1rem;
     background: linear-gradient(180deg, rgba(16, 36, 59, 0.98), rgba(18, 46, 74, 0.96));
     color: #eef5ff;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 18px 0 40px rgba(12, 27, 45, 0.12);
     transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1), padding 240ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease;
+    box-sizing: border-box;
+}
+
+.workspace-sidebar > * {
+    box-sizing: border-box;
 }
 
 .workspace-sidebar.is-collapsed {
     width: var(--sidebar-collapsed-width);
     padding-left: 0.85rem;
     padding-right: 0.85rem;
+}
+
+.workspace-sidebar.is-collapsed .workspace-brand {
+    gap: 0;
+    justify-content: center;
 }
 
 .workspace-shell.is-sidebar-collapsed {
@@ -95,8 +106,10 @@ input {
 .workspace-sidebar-head {
     display: flex;
     align-items: flex-start;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 0.75rem;
+    order: 1;
+    width: 100%;
 }
 
 .workspace-brand {
@@ -104,6 +117,7 @@ input {
     align-items: center;
     gap: 0.85rem;
     min-width: 0;
+    width: 100%;
 }
 
 .workspace-brand-mark {
@@ -167,8 +181,15 @@ input {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
     overflow-y: auto;
-    padding-right: 0.2rem;
+    overflow-x: hidden;
+    scrollbar-gutter: auto;
+    contain: layout;
+    box-sizing: border-box;
+    order: 2;
 }
 
 .workspace-toggle-entry {
@@ -176,16 +197,17 @@ input {
     align-items: center;
     justify-content: center;
     width: 100%;
-    min-height: 4.35rem;
-    height: auto;
-    margin-top: 0.7rem;
-    padding: 0.85rem;
+    height: 3.5rem;
+    margin: 0;
+    padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 1rem;
     background: rgba(255, 255, 255, 0.04);
     color: #eef5ff;
     cursor: pointer;
     transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+    order: 3;
+    box-sizing: border-box;
 }
 
 .workspace-toggle-entry:hover {
@@ -203,6 +225,8 @@ input {
 }
 
 .workspace-nav-menu {
+    width: 100%;
+    overflow: hidden;
     --el-menu-bg-color: transparent;
     --el-menu-border-color: transparent;
     --el-menu-hover-bg-color: rgba(255, 255, 255, 0.08);
@@ -212,7 +236,36 @@ input {
     border-right: none !important;
 }
 
+.workspace-nav-menu :deep(.el-menu) {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.workspace-nav-menu :deep(.el-scrollbar__wrap) {
+    margin-right: 0 !important;
+}
+
+.workspace-nav-menu :deep(.el-menu-item__title) {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.workspace-nav-menu :deep(.el-menu-item) {
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+.workspace-sidebar.is-collapsed .workspace-nav-menu :deep(.el-menu-item) {
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
 .workspace-menu-item {
+    display: flex !important;
+    align-items: center;
+    width: 100%;
     min-height: 4.35rem;
     height: auto;
     margin-bottom: 0.7rem;
@@ -220,13 +273,18 @@ input {
     border-radius: 1rem;
     border: 1px solid transparent;
     line-height: 1.2;
+    overflow: hidden;
     transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+    box-sizing: border-box;
+}
+
+.workspace-sidebar.is-collapsed .workspace-menu-item {
+    padding: 0.85rem 0.5rem !important;
 }
 
 .workspace-nav-menu .el-menu-item:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.12);
-    transform: translateX(2px);
 }
 
 .workspace-nav-menu .el-menu-item.is-active {
@@ -244,25 +302,39 @@ input {
     flex: 0 0 auto;
 }
 
+.workspace-nav-menu .el-menu-item {
+    min-width: 0;
+}
+
 .workspace-nav-copy {
     display: grid;
     gap: 0.16rem;
     overflow: hidden;
+    min-width: 0;
+    flex: 1;
 }
 
 .workspace-nav-label {
     font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .workspace-nav-caption {
     color: rgba(238, 245, 255, 0.64);
     font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .workspace-sidebar-footer {
     display: grid;
     gap: 0.75rem;
     margin-top: auto;
+    box-sizing: border-box;
+    order: 4;
 }
 
 .workspace-user-card {
