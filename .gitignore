@@ -1,6 +1,7 @@
 # Environment variables
 backend/.env
 .claude/
+CLAUDE.md
 
 # Dependencies
 backend/node_modules/

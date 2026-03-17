@@ -55,21 +55,56 @@ const systemInfo = ref({
 
 // ============ 初始化数据 ============
 
-function generateTrendData() {
-  const dates = [];
-  const records = [];
-  const blocks = [];
-
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    dates.push(date.toLocaleDateString('zh-CN'));
-
-    records.push(Math.floor(Math.random() * 20) + 5);
-    blocks.push(Math.floor(Math.random() * 100) + 50);
+function getAuthToken() {
+  try {
+    const sessionStr = localStorage.getItem('aero-evidence.auth-session.v1');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      return session.token || null;
+    }
+  } catch (error) {
+    console.error('Failed to get auth token:', error);
   }
+  return null;
+}
 
-  trendData.value = { dates, records, blocks };
+async function fetchStatistics() {
+  try {
+    const token = getAuthToken();
+    const response = await fetch('/api/dashboard/statistics', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      stats.value.blockHeight = data.blockHeight || 0;
+      stats.value.totalChainRecords = data.onChainRecords || 0;
+    }
+  } catch (error) {
+    console.error('Failed to fetch statistics:', error);
+  }
+}
+
+async function fetchTrendData() {
+  try {
+    const token = getAuthToken();
+    const response = await fetch('/api/dashboard/trend', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      trendData.value = {
+        dates: data.dates || [],
+        records: data.records || [],
+        blocks: data.blocks || [],
+      };
+    }
+  } catch (error) {
+    console.error('Failed to fetch trend data:', error);
+  }
 }
 
 function generateMockRecords() {
@@ -87,6 +122,33 @@ function generateMockRecords() {
   }
 
   recentRecords.value = records;
+}
+
+async function fetchBrowserData() {
+  try {
+    const token = getAuthToken();
+    const response = await fetch('/api/dashboard/browser', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const records = data.records || [];
+      recentRecords.value = records.map(item => ({
+        id: item.id,
+        aircraftNo: item.title || '-',
+        status: item.status || '已上链',
+        submittedBy: 'System',
+        chainTime: new Date(item.timestamp).toLocaleString('zh-CN'),
+      }));
+    } else {
+      generateMockRecords();
+    }
+  } catch (error) {
+    console.error('Failed to fetch browser data:', error);
+    generateMockRecords();
+  }
 }
 
 function generateMockBlocks() {
@@ -123,6 +185,42 @@ function generateMockTransactions() {
   recentTransactions.value = transactions;
 }
 
+async function fetchUserStats() {
+  try {
+    const token = getAuthToken();
+    const response = await fetch('/api/dashboard/user-stats', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (response.ok) {
+      userStats.value = await response.json();
+    }
+  } catch (error) {
+    console.error('Failed to fetch user stats:', error);
+  }
+}
+
+async function fetchSystemStats() {
+  try {
+    const token = getAuthToken();
+    const response = await fetch('/api/dashboard/system-stats', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      systemStats.value = data;
+      // 同时更新顶部统计卡片的数据
+      stats.value.monthlyNewRecords = data.recordsThisMonth || 0;
+      stats.value.chainConfirmationRate = data.chainConfirmationRate || 0;
+    }
+  } catch (error) {
+    console.error('Failed to fetch system stats:', error);
+  }
+}
+
 function generateActivityLog() {
   const actions = [
     { action: '提交了检修记录', icon: '📝' },
@@ -155,12 +253,40 @@ function generateActivityLog() {
   activityLog.value = logs;
 }
 
+async function fetchActivityLog() {
+  try {
+    const token = getAuthToken();
+    const response = await fetch('/api/dashboard/activity-log', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const activities = data.activities || [];
+      activityLog.value = activities.map(item => ({
+        id: item.recordId,
+        icon: item.icon,
+        action: item.action,
+        employee: item.performer,
+        aircraft: item.aircraftNo,
+        time: new Date(item.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+        recordId: item.recordId,
+      }));
+    } else {
+      generateActivityLog();
+    }
+  } catch (error) {
+    console.error('Failed to fetch activity log:', error);
+    generateActivityLog();
+  }
+}
+
 function initializeCharts() {
   chartsLoading.value = true;
   setTimeout(() => {
-    generateTrendData();
-    chartsLoading.value = false;
     drawTrendChart();
+    chartsLoading.value = false;
   }, 500);
 }
 
@@ -281,12 +407,23 @@ function drawTrendChart() {
 
 // ============ 生命周期 ============
 
-onMounted(() => {
-  generateMockRecords();
+onMounted(async () => {
   generateMockBlocks();
   generateMockTransactions();
-  generateActivityLog();
   initializeCharts();
+
+  // 调用后端API获取数据
+  await Promise.all([
+    fetchStatistics(),
+    fetchTrendData(),
+    fetchBrowserData(),
+    fetchActivityLog(),
+    fetchUserStats(),
+    fetchSystemStats(),
+  ]);
+
+  // 初始化图表（使用获取到的数据）
+  drawTrendChart();
 });
 </script>
 
