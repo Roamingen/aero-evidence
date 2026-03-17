@@ -497,6 +497,10 @@ input {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.card-grid-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .module-panel {
     padding: 1.15rem 1.2rem;
     border-radius: 1.25rem;
@@ -1352,6 +1356,7 @@ input {
     .workspace-summary-grid,
     .two-up-grid,
     .card-grid-three,
+    .card-grid-four,
     .auth-shell {
         grid-template-columns: 1fr;
     }

@@ -5,6 +5,7 @@ const authRoutes = require('./routes/authRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const imageDetectionRoutes = require('./routes/imageDetectionRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const draftRoutes = require('./routes/draftRoutes');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/image-detection', imageDetectionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/maintenance/drafts', draftRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ message: '接口不存在' });

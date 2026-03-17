@@ -161,6 +161,8 @@ function buildRecordSummaryWhereClause(filters = {}) {
     } else if (String(filters.status || '').trim()) {
         clauses.push('mr.status = ?');
         params.push(String(filters.status).trim());
+    } else if (!filters.includeDrafts) {
+        clauses.push("mr.status NOT IN ('draft', 'finalized')");
     }
 
     if (aircraftRegNo) {
@@ -825,6 +827,343 @@ async function listRecordSummaries(filters = {}, executor) {
     };
 }
 
+async function insertDraftRecord(data, executor) {
+    const db = getExecutor(executor);
+    const [result] = await db.execute(
+        `INSERT INTO maintenance_records (
+            job_card_no, performer_user_id, performer_employee_no, performer_name,
+            status, created_by, draft_saved_at
+        ) VALUES (?, ?, ?, ?, 'draft', ?, CURRENT_TIMESTAMP)`,
+        [
+            data.jobCardNo,
+            data.performerUserId,
+            data.performerEmployeeNo,
+            data.performerName || null,
+            data.createdBy,
+        ]
+    );
+
+    const draftId = result.insertId;
+
+    await db.execute(
+        `INSERT INTO maintenance_record_payloads (record_id) VALUES (?)`,
+        [draftId]
+    );
+
+    return draftId;
+}
+
+async function getDraftById(draftId, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT * FROM maintenance_records WHERE id = ? AND status IN ('draft', 'finalized') LIMIT 1`,
+        [draftId]
+    );
+    return mapRecordRow(rows[0] || null);
+}
+
+async function listDraftsByUserId(userId, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT mr.*,
+            (SELECT COUNT(*) FROM maintenance_attachments ma WHERE ma.record_id = mr.id) AS attachment_count
+         FROM maintenance_records mr
+         WHERE mr.performer_user_id = ? AND mr.status IN ('draft', 'finalized')
+         ORDER BY mr.updated_at DESC`,
+        [userId]
+    );
+
+    return rows.map((row) => ({
+        ...mapRecordRow(row),
+        attachmentCount: Number(row.attachment_count || 0),
+    }));
+}
+
+async function updateDraftFields(draftId, fields, executor) {
+    const db = getExecutor(executor);
+    const sets = [];
+    const params = [];
+
+    const fieldMapping = {
+        aircraftRegNo: 'aircraft_reg_no',
+        aircraftType: 'aircraft_type',
+        ataCode: 'ata_code',
+        workType: 'work_type',
+        locationCode: 'location_code',
+        requiredTechnicianSignatures: 'required_technician_signatures',
+        requiredReviewerSignatures: 'required_reviewer_signatures',
+        isRII: 'is_rii',
+        occurrenceTime: 'occurrence_time',
+    };
+
+    for (const [jsKey, dbCol] of Object.entries(fieldMapping)) {
+        if (fields[jsKey] !== undefined) {
+            sets.push(`${dbCol} = ?`);
+            params.push(fields[jsKey]);
+        }
+    }
+
+    sets.push('draft_saved_at = CURRENT_TIMESTAMP');
+
+    if (sets.length > 0) {
+        params.push(draftId);
+        await db.execute(
+            `UPDATE maintenance_records SET ${sets.join(', ')} WHERE id = ?`,
+            params
+        );
+    }
+}
+
+async function updateDraftPayload(draftId, payload, executor) {
+    const db = getExecutor(executor);
+    await db.execute(
+        `UPDATE maintenance_record_payloads
+         SET work_description = ?,
+             reference_document = ?,
+             fault_code = ?,
+             fault_description = ?,
+             raw_form_json = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE record_id = ?`,
+        [
+            payload.workDescription || null,
+            payload.referenceDocument || null,
+            payload.faultCode || null,
+            payload.faultDescription || null,
+            payload.rawFormJson ? JSON.stringify(payload.rawFormJson) : null,
+            draftId,
+        ]
+    );
+}
+
+async function replaceDraftSubTable(draftId, tableName, rows, buildParams, executor) {
+    const db = getExecutor(executor);
+    await db.execute(`DELETE FROM ${tableName} WHERE record_id = ?`, [draftId]);
+    for (const row of rows) {
+        const { columns, values } = buildParams(draftId, row);
+        await db.execute(
+            `INSERT INTO ${tableName} (record_id, ${columns.join(', ')}) VALUES (?, ${columns.map(() => '?').join(', ')})`,
+            [draftId, ...values]
+        );
+    }
+}
+
+async function replaceDraftParts(draftId, parts, executor) {
+    return replaceDraftSubTable(draftId, 'maintenance_record_parts', parts, (_id, p) => ({
+        columns: ['part_role', 'part_number', 'serial_number', 'part_status', 'source_description', 'replacement_reason', 'sort_order'],
+        values: [p.partRole, p.partNumber, p.serialNumber || null, p.partStatus || null, p.sourceDescription || null, p.replacementReason || null, p.sortOrder || 0],
+    }), executor);
+}
+
+async function replaceDraftMeasurements(draftId, measurements, executor) {
+    return replaceDraftSubTable(draftId, 'maintenance_record_measurements', measurements, (_id, m) => ({
+        columns: ['test_item_name', 'measured_values', 'is_pass', 'sort_order'],
+        values: [m.testItemName, m.measuredValues || null, m.isPass ? 1 : 0, m.sortOrder || 0],
+    }), executor);
+}
+
+async function replaceDraftReplacements(draftId, replacements, executor) {
+    return replaceDraftSubTable(draftId, 'maintenance_record_replacements', replacements, (_id, r) => ({
+        columns: ['removed_part_no', 'removed_serial_no', 'removed_status', 'installed_part_no', 'installed_serial_no', 'installed_source', 'replacement_reason', 'sort_order'],
+        values: [r.removedPartNo || null, r.removedSerialNo || null, r.removedStatus || null, r.installedPartNo || null, r.installedSerialNo || null, r.installedSource || null, r.replacementReason || null, r.sortOrder || 0],
+    }), executor);
+}
+
+async function replaceDraftSpecifiedSigners(draftId, signers, executor) {
+    return replaceDraftSubTable(draftId, 'maintenance_record_specified_signers', signers, (_id, s) => ({
+        columns: ['signer_role', 'signer_user_id', 'signer_employee_no', 'signer_name', 'is_required', 'sequence_no', 'status'],
+        values: [s.signerRole, s.signerUserId || null, s.signerEmployeeNo, s.signerName || null, s.isRequired ? 1 : 0, s.sequenceNo || 0, s.status || 'pending'],
+    }), executor);
+}
+
+async function revertDraftToEditing(draftId, executor) {
+    const db = getExecutor(executor);
+    await db.execute(
+        `UPDATE maintenance_records
+         SET status = 'draft',
+             record_id = NULL,
+             root_record_id = NULL,
+             form_hash = NULL,
+             fault_hash = NULL,
+             parts_hash = NULL,
+             measurements_hash = NULL,
+             replacements_hash = NULL,
+             attachment_manifest_hash = NULL,
+             finalized_at = NULL,
+             draft_saved_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [draftId]
+    );
+}
+
+async function finalizeDraft(draftId, data, executor) {
+    const db = getExecutor(executor);
+    await db.execute(
+        `UPDATE maintenance_records
+         SET status = 'finalized',
+             record_id = ?,
+             root_record_id = ?,
+             form_hash = ?,
+             fault_hash = ?,
+             parts_hash = ?,
+             measurements_hash = ?,
+             replacements_hash = ?,
+             attachment_manifest_hash = ?,
+             finalized_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [
+            data.recordId,
+            data.rootRecordId,
+            data.hashes.formHash,
+            data.hashes.faultHash,
+            data.hashes.partsHash,
+            data.hashes.measurementsHash,
+            data.hashes.replacementsHash,
+            data.hashes.attachmentManifestHash,
+            draftId,
+        ]
+    );
+}
+
+async function submitDraft(draftId, data, executor) {
+    const db = getExecutor(executor);
+    await db.execute(
+        `UPDATE maintenance_records
+         SET status = ?,
+             chain_record_id = ?,
+             chain_tx_hash = ?,
+             chain_block_number = ?,
+             technician_signature_count = ?,
+             reviewer_signature_count = ?,
+             submitted_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [
+            data.status,
+            data.chainRecordId,
+            data.chainTxHash || null,
+            data.chainBlockNumber || null,
+            data.technicianSignatureCount || 0,
+            data.reviewerSignatureCount || 0,
+            draftId,
+        ]
+    );
+}
+
+async function insertDraftAttachment(draftId, attachment, executor) {
+    const db = getExecutor(executor);
+    const [result] = await db.execute(
+        `INSERT INTO maintenance_attachments (
+            record_id, attachment_id, attachment_type, category_code,
+            file_name, original_file_name, mime_type, file_extension,
+            file_size, content_hash, storage_disk, storage_path,
+            upload_status, uploaded_by, uploaded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, 'ready', ?, CURRENT_TIMESTAMP)`,
+        [
+            draftId,
+            attachment.attachmentId,
+            attachment.attachmentType,
+            attachment.categoryCode || null,
+            attachment.fileName,
+            attachment.originalFileName || null,
+            attachment.mimeType,
+            attachment.fileExtension || null,
+            attachment.fileSize,
+            attachment.contentHash,
+            attachment.storagePath,
+            attachment.uploadedBy || null,
+        ]
+    );
+    return result.insertId;
+}
+
+async function getAttachmentByDraftAndId(draftId, attachmentId, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT * FROM maintenance_attachments WHERE record_id = ? AND attachment_id = ? LIMIT 1`,
+        [draftId, attachmentId]
+    );
+    return rows[0] ? mapAttachmentRow(rows[0]) : null;
+}
+
+async function deleteAttachmentByDraftAndId(draftId, attachmentId, executor) {
+    const db = getExecutor(executor);
+    await db.execute(
+        `DELETE FROM maintenance_attachments WHERE record_id = ? AND attachment_id = ?`,
+        [draftId, attachmentId]
+    );
+}
+
+async function listAttachmentsByDraftId(draftId, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT * FROM maintenance_attachments WHERE record_id = ? ORDER BY uploaded_at ASC`,
+        [draftId]
+    );
+    return rows.map(mapAttachmentRow);
+}
+
+async function deleteDraftAndChildren(draftId, executor) {
+    const db = getExecutor(executor);
+    await db.execute('DELETE FROM maintenance_attachment_upload_jobs WHERE attachment_id IN (SELECT id FROM maintenance_attachments WHERE record_id = ?)', [draftId]);
+    await db.execute('DELETE FROM maintenance_attachments WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_attachment_manifests WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_record_specified_signers WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_record_replacements WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_record_measurements WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_record_parts WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_record_payloads WHERE record_id = ?', [draftId]);
+    await db.execute('DELETE FROM maintenance_records WHERE id = ?', [draftId]);
+}
+
+async function upsertDraftManifest(draftId, manifestData, executor) {
+    const db = getExecutor(executor);
+    const [existing] = await db.execute(
+        `SELECT id FROM maintenance_attachment_manifests WHERE record_id = ? LIMIT 1`,
+        [draftId]
+    );
+
+    if (existing.length > 0) {
+        await db.execute(
+            `UPDATE maintenance_attachment_manifests
+             SET manifest_hash = ?, attachment_count = ?, document_count = ?,
+                 image_count = ?, video_count = ?, other_count = ?,
+                 total_size = ?, manifest_json = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE record_id = ?`,
+            [
+                manifestData.manifestHash,
+                manifestData.attachmentCount,
+                manifestData.documentCount,
+                manifestData.imageCount,
+                manifestData.videoCount,
+                manifestData.otherCount,
+                manifestData.totalSize,
+                JSON.stringify(manifestData.manifestJson),
+                draftId,
+            ]
+        );
+        return existing[0].id;
+    }
+
+    const [result] = await db.execute(
+        `INSERT INTO maintenance_attachment_manifests (
+            record_id, manifest_hash, attachment_count, document_count,
+            image_count, video_count, other_count, total_size, manifest_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            draftId,
+            manifestData.manifestHash,
+            manifestData.attachmentCount,
+            manifestData.documentCount,
+            manifestData.imageCount,
+            manifestData.videoCount,
+            manifestData.otherCount,
+            manifestData.totalSize,
+            JSON.stringify(manifestData.manifestJson),
+        ]
+    );
+    return result.insertId;
+}
+
 module.exports = {
     getRecordRowByRecordId,
     getRecordDetailByRecordId,
@@ -835,4 +1174,22 @@ module.exports = {
     markRecordAsResubmitted,
     listRevisionsByRootRecordId,
     listRecordSummaries,
+    insertDraftRecord,
+    getDraftById,
+    listDraftsByUserId,
+    updateDraftFields,
+    updateDraftPayload,
+    replaceDraftParts,
+    replaceDraftMeasurements,
+    replaceDraftReplacements,
+    replaceDraftSpecifiedSigners,
+    revertDraftToEditing,
+    finalizeDraft,
+    submitDraft,
+    insertDraftAttachment,
+    getAttachmentByDraftAndId,
+    deleteAttachmentByDraftAndId,
+    listAttachmentsByDraftId,
+    deleteDraftAndChildren,
+    upsertDraftManifest,
 };
