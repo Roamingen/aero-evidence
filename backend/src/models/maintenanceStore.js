@@ -972,7 +972,7 @@ async function replaceDraftReplacements(draftId, replacements, executor) {
 async function replaceDraftSpecifiedSigners(draftId, signers, executor) {
     return replaceDraftSubTable(draftId, 'maintenance_record_specified_signers', signers, (_id, s) => ({
         columns: ['signer_role', 'signer_user_id', 'signer_employee_no', 'signer_name', 'is_required', 'sequence_no', 'status'],
-        values: [s.signerRole, s.signerUserId || null, s.signerEmployeeNo, s.signerName || null, s.isRequired ? 1 : 0, s.sequenceNo || 0, s.status || 'pending'],
+        values: [s.signerRole, s.signerUserId || null, s.signerEmployeeNo, s.signerName || null, s.isRequired ? 1 : 0, 0, s.status || 'pending'],
     }), executor);
 }
 

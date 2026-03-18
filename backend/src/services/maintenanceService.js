@@ -157,7 +157,6 @@ async function resolveSpecifiedSigners(specifiedSignersInput, previousSpecifiedS
             signerEmployeeNo: user.employeeNo,
             signerName: user.name,
             isRequired: item.isRequired == null ? true : Boolean(item.isRequired),
-            sequenceNo: assertPositiveInteger(item.sequenceNo, `specifiedSigners[${index}].sequenceNo`, index),
             status: item.status || 'pending',
             signedSignatureId: item.signedSignatureId || null,
             signedAt: item.signedAt || null,
@@ -165,7 +164,7 @@ async function resolveSpecifiedSigners(specifiedSignersInput, previousSpecifiedS
     }
 
     return dedupeSpecifiedSigners(normalizedSigners)
-        .sort((left, right) => left.sequenceNo - right.sequenceNo || left.signerEmployeeNo.localeCompare(right.signerEmployeeNo));
+        .sort((left, right) => left.signerEmployeeNo.localeCompare(right.signerEmployeeNo));
 }
 
 function validateSpecifiedSignerCoverage(record) {

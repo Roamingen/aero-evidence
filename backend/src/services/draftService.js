@@ -280,7 +280,43 @@ async function finalizeDraft(currentAddress, draftId) {
     if (!normalizeString(draft.ataCode)) throw createError('ATA章节不能为空', 400);
     if (!normalizeString(draft.workType)) throw createError('工作类型不能为空', 400);
 
+    // ─── Signer validation ───
     const pool = getPool();
+    const [signerRows] = await pool.execute(
+        `SELECT signer_role, signer_employee_no, is_required FROM maintenance_record_specified_signers WHERE record_id = ?`,
+        [draftId]
+    );
+    const technicianSigners = signerRows.filter(s => s.signer_role === 'technician');
+    const reviewerSigners = signerRows.filter(s => s.signer_role === 'reviewer');
+    const riiSigners = signerRows.filter(s => s.signer_role === 'rii_inspector');
+    const releaseSigners = signerRows.filter(s => s.signer_role === 'release_authority');
+
+    if (technicianSigners.length === 0) {
+        throw createError('至少需要指定一名技术人员', 400);
+    }
+
+    const requiredReviewer = draft.requiredReviewerSignatures || 1;
+    const mandatoryReviewerCount = reviewerSigners.filter(s => s.is_required).length;
+    const optionalReviewerCount = reviewerSigners.length - mandatoryReviewerCount;
+    if (requiredReviewer > reviewerSigners.length && reviewerSigners.length > 0) {
+        throw createError(`所需审核签名数 (${requiredReviewer}) 超过候选审核人数 (${reviewerSigners.length})`, 400);
+    }
+    if (mandatoryReviewerCount > requiredReviewer) {
+        throw createError(`必签审核人数 (${mandatoryReviewerCount}) 超过所需审核签名数 (${requiredReviewer})`, 400);
+    }
+    if (mandatoryReviewerCount === requiredReviewer && optionalReviewerCount > 0) {
+        throw createError(`必签人数已等于所需签名数 (${requiredReviewer})，不能存在非必签审核人员（当前有 ${optionalReviewerCount} 名多余）`, 400);
+    }
+
+    if (draft.isRII && riiSigners.length === 0) {
+        throw createError('已启用 RII 检查，必须指定一名 RII 检查员', 400);
+    }
+
+    // Auto-set requiredTechnicianSignatures = technician count
+    await pool.execute(
+        `UPDATE maintenance_records SET required_technician_signatures = ? WHERE id = ?`,
+        [technicianSigners.length, draftId]
+    );
     const [payloadRows] = await pool.execute(
         `SELECT * FROM maintenance_record_payloads WHERE record_id = ? LIMIT 1`,
         [draftId]

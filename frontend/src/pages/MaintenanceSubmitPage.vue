@@ -36,12 +36,6 @@ const currentDraftId = ref(null);
 const currentJobCardNo = ref('');
 
 // ─── Form data ───
-const signerRoleOptions = [
-  { label: '额外技术签名人', value: 'technician' },
-  { label: '审核签名人', value: 'reviewer' },
-  { label: 'RII 检查员', value: 'rii_inspector' },
-  { label: '放行授权人', value: 'release_authority' },
-];
 
 function toLocalDateTimeInputValue(date = new Date()) {
   const year = date.getFullYear();
@@ -59,7 +53,6 @@ function createInitialForm() {
     ataCode: '',
     workType: '',
     locationCode: '',
-    requiredTechnicianSignatures: 1,
     requiredReviewerSignatures: 1,
     isRII: false,
     occurrenceTime: toLocalDateTimeInputValue(),
@@ -72,7 +65,11 @@ function createInitialForm() {
     parts: [],
     measurements: [],
     replacements: [],
-    specifiedSigners: [],
+    // ─── Four signer sections ───
+    technicianSigners: [],      // All must sign
+    reviewerSigners: [],        // Pool, need requiredReviewerSignatures count
+    riiInspector: '',           // Single employeeNo, only when isRII
+    releaseAuthority: '',       // Single employeeNo
     confirmationPrivateKey: '',
   };
 }
@@ -92,6 +89,24 @@ const submitResult = ref(null);
 
 const currentUser = computed(() => auth.latestLoggedInUser.value);
 
+// ─── Reviewer signer validation ───
+const reviewerValidationWarning = computed(() => {
+  const pool = form.value.reviewerSigners.filter((r) => r.employeeNo);
+  const mandatoryCount = pool.filter((r) => r.isMandatory).length;
+  const optionalCount = pool.length - mandatoryCount;
+  const required = form.value.requiredReviewerSignatures;
+  if (mandatoryCount > required) {
+    return `必签人数 (${mandatoryCount}) 超过了所需签名数 (${required})，请减少必签人数或增加所需签名数。`;
+  }
+  if (required > pool.length && pool.length > 0) {
+    return `所需签名数 (${required}) 超过了候选人数 (${pool.length})，请增加候选人或减少所需签名数。`;
+  }
+  if (mandatoryCount === required && optionalCount > 0) {
+    return `必签人数已等于所需签名数 (${required})，不能再添加非必签人员（当前有 ${optionalCount} 名多余的非必签人员）。`;
+  }
+  return '';
+});
+
 function authHeaders() {
   return {
     Authorization: `Bearer ${auth.loginResult.value?.token}`,
@@ -108,8 +123,11 @@ function createMeasurementRow() {
 function createReplacementRow() {
   return { removedPartNo: '', removedSerialNo: '', removedStatus: '', installedPartNo: '', installedSerialNo: '', installedSource: '', replacementReason: '' };
 }
-function createSpecifiedSignerRow() {
-  return { signerRole: 'reviewer', employeeNo: '', isRequired: true, sequenceNo: 0 };
+function createTechnicianSignerRow() {
+  return { employeeNo: '' };
+}
+function createReviewerSignerRow() {
+  return { employeeNo: '', isMandatory: false };
 }
 
 function addRow(collectionName, factory) {
@@ -244,7 +262,6 @@ function populateFormFromDraft(data) {
   form.value.ataCode = data.ataCode || '';
   form.value.workType = data.workType || '';
   form.value.locationCode = data.locationCode || '';
-  form.value.requiredTechnicianSignatures = data.requiredTechnicianSignatures || 1;
   form.value.requiredReviewerSignatures = data.requiredReviewerSignatures || 1;
   form.value.isRII = Boolean(data.isRII);
   form.value.occurrenceTime = data.occurrenceTime
@@ -278,12 +295,18 @@ function populateFormFromDraft(data) {
     installedSource: r.installedSource || '',
     replacementReason: r.replacementReason || '',
   }));
-  form.value.specifiedSigners = (data.specifiedSigners || []).map((s) => ({
-    signerRole: s.signerRole || 'reviewer',
-    employeeNo: s.employeeNo || '',
-    isRequired: s.isRequired !== false,
-    sequenceNo: s.sequenceNo || 0,
-  }));
+  // ─── Populate four signer sections from flat specifiedSigners ───
+  const signers = data.specifiedSigners || [];
+  form.value.technicianSigners = signers
+    .filter((s) => s.signerRole === 'technician')
+    .map((s) => ({ employeeNo: s.employeeNo || s.signerEmployeeNo || '' }));
+  form.value.reviewerSigners = signers
+    .filter((s) => s.signerRole === 'reviewer')
+    .map((s) => ({ employeeNo: s.employeeNo || s.signerEmployeeNo || '', isMandatory: Boolean(s.isRequired) }));
+  const rii = signers.find((s) => s.signerRole === 'rii_inspector');
+  form.value.riiInspector = rii ? (rii.employeeNo || rii.signerEmployeeNo || '') : '';
+  const rel = signers.find((s) => s.signerRole === 'release_authority');
+  form.value.releaseAuthority = rel ? (rel.employeeNo || rel.signerEmployeeNo || '') : '';
   attachments.value = (data.attachments || []).map((a) => ({
     id: a.id,
     fileName: a.fileName || a.originalFileName || '',
@@ -331,13 +354,28 @@ async function handleSaveDraft() {
 }
 
 function buildSaveBody() {
+  // Merge four signer sections into flat specifiedSigners for API
+  const specifiedSigners = [];
+  for (const t of form.value.technicianSigners) {
+    if (t.employeeNo) specifiedSigners.push({ signerRole: 'technician', employeeNo: t.employeeNo, isRequired: true });
+  }
+  for (const r of form.value.reviewerSigners) {
+    if (r.employeeNo) specifiedSigners.push({ signerRole: 'reviewer', employeeNo: r.employeeNo, isRequired: Boolean(r.isMandatory) });
+  }
+  if (form.value.riiInspector) {
+    specifiedSigners.push({ signerRole: 'rii_inspector', employeeNo: form.value.riiInspector, isRequired: true });
+  }
+  if (form.value.releaseAuthority) {
+    specifiedSigners.push({ signerRole: 'release_authority', employeeNo: form.value.releaseAuthority, isRequired: true });
+  }
+
   return {
     aircraftRegNo: form.value.aircraftRegNo || null,
     aircraftType: form.value.aircraftType || null,
     ataCode: form.value.ataCode || null,
     workType: form.value.workType || null,
     locationCode: form.value.locationCode || null,
-    requiredTechnicianSignatures: form.value.requiredTechnicianSignatures,
+    requiredTechnicianSignatures: form.value.technicianSigners.filter((t) => t.employeeNo).length || 1,
     requiredReviewerSignatures: form.value.requiredReviewerSignatures,
     isRII: form.value.isRII,
     occurrenceTime: form.value.occurrenceTime ? new Date(form.value.occurrenceTime).toISOString() : null,
@@ -350,7 +388,7 @@ function buildSaveBody() {
     parts: form.value.parts,
     measurements: form.value.measurements,
     replacements: form.value.replacements,
-    specifiedSigners: form.value.specifiedSigners.filter((s) => s.employeeNo),
+    specifiedSigners,
   };
 }
 
@@ -416,6 +454,11 @@ function formatFileSize(bytes) {
 
 // ─── Finalize ───
 async function handleFinalize() {
+  // ─── Client-side signer validation ───
+  if (reviewerValidationWarning.value) {
+    ElMessage.warning(reviewerValidationWarning.value);
+    return;
+  }
   finalizing.value = true;
   try {
     // Save first to ensure latest changes are persisted
@@ -695,20 +738,6 @@ onMounted(async () => {
             </el-form-item>
           </div>
 
-          <div class="form-grid three-col">
-            <el-form-item label="技术签名数">
-              <el-input-number v-model="form.requiredTechnicianSignatures" :min="1" :step="1" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="审核签名数">
-              <el-input-number v-model="form.requiredReviewerSignatures" :min="1" :step="1" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="是否 RII">
-              <div class="switch-wrap">
-                <el-switch v-model="form.isRII" />
-              </div>
-            </el-form-item>
-          </div>
-
           <el-form-item label="工作描述">
             <el-input v-model="form.payload.workDescription" type="textarea" :rows="4" resize="none" />
           </el-form-item>
@@ -728,41 +757,102 @@ onMounted(async () => {
         </el-form>
       </div>
 
-      <!-- Specified Signers -->
+      <!-- ═══ Signing Configuration ═══ -->
       <div class="section-block">
         <div class="section-title-row">
           <div>
-            <div class="section-title">指定签名人员</div>
-            <div class="section-subtitle">留空则表示该角色仍按普通权限池处理。</div>
+            <div class="section-title">签名配置</div>
+            <div class="section-subtitle">设置审核所需签名数量及是否启用 RII 检查。</div>
           </div>
-          <el-button @click="addRow('specifiedSigners', createSpecifiedSignerRow)">新增指定签名人</el-button>
         </div>
-
-        <div v-if="form.specifiedSigners.length === 0" class="empty-inline-state">暂无指定签名人。</div>
-
-        <div v-for="(signer, index) in form.specifiedSigners" :key="`signer-${index}`" class="inline-card">
-          <div class="section-title-row compact-row">
-            <div class="mini-title">签名人 {{ index + 1 }}</div>
-            <el-button text type="danger" @click="removeRow('specifiedSigners', index)">删除</el-button>
-          </div>
-          <div class="form-grid three-col">
-            <el-form-item label="角色">
-              <el-select v-model="signer.signerRole" style="width: 100%">
-                <el-option v-for="opt in signerRoleOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
+        <el-form label-position="top">
+          <div class="form-grid two-col">
+            <el-form-item label="审核签名数">
+              <el-input-number v-model="form.requiredReviewerSignatures" :min="1" :step="1" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="工号">
-              <el-input v-model="signer.employeeNo" placeholder="例如 E2001" />
-            </el-form-item>
-            <el-form-item label="顺序号">
-              <el-input-number v-model="signer.sequenceNo" :min="0" :step="1" style="width: 100%" />
+            <el-form-item label="是否 RII">
+              <div class="switch-wrap">
+                <el-switch v-model="form.isRII" />
+              </div>
             </el-form-item>
           </div>
-          <el-form-item label="是否必签">
-            <div class="switch-wrap">
-              <el-switch v-model="signer.isRequired" />
+        </el-form>
+      </div>
+
+      <!-- ═══ Signer Sections (4 blocks) ═══ -->
+
+      <!-- 1. Technician Signers (all must sign) -->
+      <div class="section-block">
+        <div class="section-title-row">
+          <div>
+            <div class="section-title">技术人员签名</div>
+            <div class="section-subtitle">所有指定的技术人员均须签名，签名数自动等于人数。</div>
+          </div>
+          <el-button @click="addRow('technicianSigners', createTechnicianSignerRow)">添加技术人员</el-button>
+        </div>
+        <div v-if="form.technicianSigners.length === 0" class="empty-inline-state">暂未指定技术人员。</div>
+        <div v-for="(t, i) in form.technicianSigners" :key="`tech-${i}`" class="inline-card compact-signer-card">
+          <div class="signer-row">
+            <span class="signer-label">技术人员 {{ i + 1 }}</span>
+            <el-input v-model="t.employeeNo" placeholder="工号，例如 E1001" style="flex: 1" />
+            <el-button text type="danger" @click="removeRow('technicianSigners', i)">删除</el-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Reviewer Signers (pool, need requiredReviewerSignatures) -->
+      <div class="section-block">
+        <div class="section-title-row">
+          <div>
+            <div class="section-title">审核人员签名</div>
+            <div class="section-subtitle">
+              指定候选审核人员池，需 {{ form.requiredReviewerSignatures }} 人签名。
+              可标记"必签"的人员不能超过所需签名数。
             </div>
-          </el-form-item>
+          </div>
+          <el-button @click="addRow('reviewerSigners', createReviewerSignerRow)">添加审核人员</el-button>
+        </div>
+        <div v-if="reviewerValidationWarning" class="signer-validation-warning">{{ reviewerValidationWarning }}</div>
+        <div v-if="form.reviewerSigners.length === 0" class="empty-inline-state">暂未指定审核人员。</div>
+        <div v-for="(r, i) in form.reviewerSigners" :key="`rev-${i}`" class="inline-card compact-signer-card">
+          <div class="signer-row">
+            <span class="signer-label">审核人员 {{ i + 1 }}</span>
+            <el-input v-model="r.employeeNo" placeholder="工号，例如 E2001" style="flex: 1" />
+            <el-checkbox v-model="r.isMandatory">必签</el-checkbox>
+            <el-button text type="danger" @click="removeRow('reviewerSigners', i)">删除</el-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. RII Inspector (optional, shown only when isRII) -->
+      <div v-if="form.isRII" class="section-block">
+        <div class="section-title-row">
+          <div>
+            <div class="section-title">RII 检查员</div>
+            <div class="section-subtitle">已启用 RII 检查，请指定一名 RII 检查员。</div>
+          </div>
+        </div>
+        <div class="inline-card compact-signer-card">
+          <div class="signer-row">
+            <span class="signer-label">RII 检查员</span>
+            <el-input v-model="form.riiInspector" placeholder="工号，例如 E3001" style="flex: 1" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Release Authority -->
+      <div class="section-block">
+        <div class="section-title-row">
+          <div>
+            <div class="section-title">放行授权人</div>
+            <div class="section-subtitle">指定一名放行授权人，记录最终放行时须由此人签名。</div>
+          </div>
+        </div>
+        <div class="inline-card compact-signer-card">
+          <div class="signer-row">
+            <span class="signer-label">放行授权人</span>
+            <el-input v-model="form.releaseAuthority" placeholder="工号，例如 E2002" style="flex: 1" />
+          </div>
         </div>
       </div>
 
@@ -1081,3 +1171,30 @@ onMounted(async () => {
 
   </div>
 </template>
+
+<style scoped>
+.compact-signer-card {
+  padding: 0.5rem 0.75rem !important;
+}
+.signer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.signer-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+  min-width: 5.5em;
+}
+.signer-validation-warning {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
+  border: 1px solid var(--el-color-warning-light-5);
+}
+</style>
