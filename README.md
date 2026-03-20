@@ -10,6 +10,7 @@
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-lightblue?style=for-the-badge&logo=ethereum&logoColor=white)](https://soliditylang.org/)
 [![Hardhat](https://img.shields.io/badge/Hardhat-3-yellow?style=for-the-badge&logo=ethereum&logoColor=white)](https://hardhat.org/)
 [![Hyperledger Besu](https://img.shields.io/badge/Hyperledger-Besu-green?style=for-the-badge&logo=hyperledger&logoColor=white)](https://hyperledger.org/use/besu)
+[![MetaMask](https://img.shields.io/badge/MetaMask-钱包签名-orange?style=for-the-badge&logo=ethereum&logoColor=white)](https://metamask.io/)
 
 基于区块链技术的民航客机检修记录存证系统，采用"链下业务数据 + 链上关键摘要存证"架构，支持检修记录提交、多人签名审核、防篡改校验和权限化访问。
 
@@ -22,13 +23,13 @@
 [![项目状态](https://img.shields.io/badge/状态-开发中-brightgreen?style=flat-square&logo=github)](https://github.com)
 [![项目进度](https://img.shields.io/badge/进度-80%25-yellow?style=flat-square&logo=chart-line)](https://github.com)
 [![项目阶段](https://img.shields.io/badge/阶段-产品化开发-orange?style=flat-square&logo=cog)](https://github.com)
-[![最后更新](https://img.shields.io/badge/更新-2026--03--09-blue?style=flat-square&logo=clock)](https://github.com)
+[![最后更新](https://img.shields.io/badge/更新-2026--03--21-blue?style=flat-square&logo=clock)](https://github.com)
 
 </div>
 
 - **当前进度**: 80% 完成
 - **项目阶段**: 后端主链路完成，产品化后台与管理能力完善中
-- **最新进展**: 查阅中心、审批工作台、人员管理、签名模板管理已完成
+- **最新进展**: 查阅中心、审批工作台、人员管理已完成；已集成 MetaMask 钱包签名（取消手动私钥输入）
 - **技术栈**:
   - 前端: Vue 3 + Vite + Element Plus
   - 后端: Node.js + Express + ethers
@@ -62,7 +63,8 @@
 - ✅ **版本化管理**: 驳回后生成新 revision，不覆盖历史记录，保留完整审计链路
 - ✅ **防篡改验证**: 支持链下数据重新计算摘要与链上记录比对校验
 - ✅ **权限控制**: RBAC 权限模型，支持角色、权限、用户映射管理
-- ✅ **私钥安全**: 用户私钥仅保留在前端本地，后端不存储任何私钥信息
+- ✅ **MetaMask 钱包集成**: 登录、注册、提交签名、审批签名全部通过 MetaMask 弹窗完成，私钥永远不暴露给应用
+- ✅ **权限控制**: RBAC 权限模型，支持角色、权限、用户映射管理
 - ✅ **图片检测**: 集成 Python 图像检测服务，支持附件图片质量检测
 
 ## 快速开始
@@ -71,6 +73,7 @@
 
 - Node.js 18+
 - MySQL 8.x
+- **MetaMask 浏览器扩展**（用于钱包签名）
 - Windows PowerShell 或 PowerShell 7
 
 ### 安装依赖
@@ -102,7 +105,6 @@ DB_NAME=aviation_maintenance
 DB_USER=your_username
 DB_PASSWORD=your_password
 JWT_SECRET=your_jwt_secret
-ADMIN_BOOTSTRAP_KEY=your_admin_key
 ```
 
 ### 数据库初始化
@@ -210,8 +212,8 @@ project/
 
 ### 认证模块
 - 管理员预注册员工账号
-- 激活码 + 私钥签名地址绑定
-- Challenge-Response 登录机制
+- 激活码 + MetaMask 签名地址绑定
+- Challenge-Response 登录机制（MetaMask 弹窗签名）
 - JWT 令牌认证
 
 ### 检修记录模块
@@ -244,9 +246,9 @@ project/
 ```mermaid
 graph TD
     A[管理员预注册] --> B[员工获取激活码]
-    B --> C[私钥签名绑定地址]
+    B --> C[连接 MetaMask 签名绑定地址]
     C --> D[激活完成]
-    D --> E[正常登录使用]
+    D --> E[MetaMask 签名登录]
 ```
 
 ### 检修记录流程
@@ -266,14 +268,16 @@ graph TD
 
 ## 测试账号
 
-系统启动时会自动创建以下测试账号：
+系统启动时会自动创建以下测试账号，需将对应私钥导入 MetaMask 使用：
 
-| 角色 | 工号 | 私钥 | 权限 |
+| 角色 | 工号 | 私钥（导入 MetaMask） | 权限 |
 |------|------|------|------|
 | 提交工程师 | E1001 | 0xac0974... | 提交检修记录 |
 | 审批工程师 | E2001 | 0x59c699... | 审核签名 |
 | 放行工程师 | E2002 | 0x5de411... | 最终放行 |
 | 系统管理员 | A9001 | 0x7c8521... | 用户管理 |
+
+> 在 MetaMask 中点击"导入账户" → 粘贴私钥即可使用对应测试账号。
 
 ## 开发指南
 
@@ -293,7 +297,7 @@ graph TD
 - 页面组件: `frontend/src/pages/`
 - 路由配置: `frontend/src/router/`
 - 状态管理: `frontend/src/stores/`
-- 工具函数: `frontend/src/utils/`
+- 工具函数: `frontend/src/utils/`（含 `metamask.js` MetaMask 集成工具）
 - 认证页面: `AuthWorkspacePage.vue`
 - 主后台页面: `WorkspaceShellPage.vue`
 - 审批工作台: `ApprovalWorkbenchPage.vue`
@@ -355,6 +359,6 @@ graph TD
 
 ---
 
-**最后更新**: 2026年3月9日
-**版本**: v2.0.0
-**状态**: 开发中 (80% 完成)
+**最后更新**: 2026年3月21日
+**版本**: v2.1.0
+**状态**: 开发中 (85% 完成)
