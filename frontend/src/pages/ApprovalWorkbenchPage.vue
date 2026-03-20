@@ -339,6 +339,7 @@ function handleCardClick(tab) {
                 <div class="queue-card-actions">
                   <el-button size="small" @click="openDetail(item.recordId)">详情</el-button>
                   <el-button size="small" type="primary" @click="handleRelease(item)">放行</el-button>
+                  <el-button size="small" type="danger" @click="handleReject(item)">驳回</el-button>
                 </div>
               </div>
             </div>
