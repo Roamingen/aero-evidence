@@ -1,14 +1,13 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ethers } from 'ethers';
 import { Upload, Delete, Document, Picture, VideoPlay, Files } from '@element-plus/icons-vue';
 
 import { useAuthSession } from '../stores/authSession';
 import { buildApiUrl } from '../utils/apiBase';
 import { parseJsonResponse } from '../utils/http';
-import { createWalletFromPrivateKey } from '../utils/wallet';
+import { signDigestWithMetaMask } from '../utils/metamask';
 
 const auth = useAuthSession();
 const route = useRoute();
@@ -77,7 +76,6 @@ function createInitialForm() {
     reviewerSigners: [],        // Pool, need requiredReviewerSignatures count
     riiInspector: '',           // Single employeeNo, only when isRII
     releaseAuthority: '',       // Single employeeNo
-    confirmationPrivateKey: '',
   };
 }
 
@@ -523,17 +521,11 @@ async function handleFinalize() {
 
 // ─── Submit ───
 async function handleSubmit() {
-  if (!form.value.confirmationPrivateKey && !auth.loginForm.value.privateKey) {
-    ElMessage.error('请输入私钥用于签名');
-    return;
-  }
-
   submitting.value = true;
   try {
-    const privateKey = form.value.confirmationPrivateKey || auth.loginForm.value.privateKey;
-    const wallet = createWalletFromPrivateKey(privateKey);
     const signedDigest = finalizeResult.value.signedDigest;
-    const signature = await wallet.signMessage(ethers.getBytes(signedDigest));
+    const expectedAddress = currentUser.value?.address;
+    const { signature } = await signDigestWithMetaMask(signedDigest, expectedAddress);
 
     const data = await apiJson(`/api/maintenance/drafts/${currentDraftId.value}/submit`, {
       method: 'POST',
@@ -576,11 +568,6 @@ function formatJson(value) {
 }
 
 // ─── Init ───
-watch(() => auth.loginForm.value.privateKey, (pk) => {
-  if (!form.value.confirmationPrivateKey) {
-    form.value.confirmationPrivateKey = pk || '';
-  }
-}, { immediate: true });
 
 onMounted(async () => {
   if (!auth.isLoggedIn.value) return;
@@ -1135,20 +1122,9 @@ onMounted(async () => {
         <div class="section-title-row">
           <div class="section-title">签名提交</div>
         </div>
-        <el-form label-position="top">
-          <el-form-item label="提交确认私钥">
-            <el-input
-              v-model="form.confirmationPrivateKey"
-              type="textarea"
-              :rows="3"
-              resize="none"
-              placeholder="输入当前登录账户的私钥，将用它对 signedDigest 签名确认"
-              show-password
-            />
-          </el-form-item>
-        </el-form>
 
         <div class="hint-panel">
+          <div class="hint-line">点击"签名并提交上链"后，MetaMask 将弹出签名请求窗口。</div>
           <div class="hint-line">签名将使用 EIP-191 对 signedDigest 进行签名，确认本人提交该检修记录。</div>
           <div class="hint-line">签名后记录将提交到区块链，此操作不可逆。</div>
         </div>

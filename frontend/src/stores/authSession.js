@@ -3,20 +3,17 @@ import { ElMessage } from 'element-plus';
 
 import { parseJsonResponse } from '../utils/http';
 import { buildApiUrl } from '../utils/apiBase';
-import { createRandomWallet, createWalletFromPrivateKey } from '../utils/wallet';
+import { connectMetaMask, signMessageWithMetaMask } from '../utils/metamask';
 
 function createInitialRegisterForm() {
   return {
     employeeNo: '',
     invitationCode: '',
-    privateKey: '',
   };
 }
 
 function createInitialLoginForm() {
-  return {
-    privateKey: '',
-  };
+  return {};
 }
 
 const AUTH_SESSION_STORAGE_KEY = 'aero-evidence.auth-session.v1';
@@ -137,27 +134,13 @@ function getDefaultWorkspaceRoute() {
   return '/auth';
 }
 
-function generateLoginWallet() {
-  const wallet = createRandomWallet();
-  loginForm.value.privateKey = wallet.privateKey;
-  loginDerivedAddress.value = wallet.address;
-  ElMessage.success('已生成测试钱包');
-}
-
-function generateRegisterWallet() {
-  const wallet = createRandomWallet();
-  registerForm.value.privateKey = wallet.privateKey;
-  registerDerivedAddress.value = wallet.address;
-  ElMessage.success('已生成测试钱包');
-}
-
 async function handleRegister() {
   try {
     registerLoading.value = true;
     registerResult.value = null;
 
-    const wallet = createWalletFromPrivateKey(registerForm.value.privateKey);
-    registerDerivedAddress.value = wallet.address;
+    const { address } = await connectMetaMask();
+    registerDerivedAddress.value = address;
 
     const challengeResponse = await fetch(buildApiUrl('/api/auth/activate/challenge'), {
       method: 'POST',
@@ -165,7 +148,7 @@ async function handleRegister() {
       body: JSON.stringify({
         employeeNo: registerForm.value.employeeNo,
         activationCode: registerForm.value.invitationCode,
-        address: wallet.address,
+        address,
       }),
     });
 
@@ -175,14 +158,14 @@ async function handleRegister() {
     }
 
     registerChallenge.value = challengeData;
-    const signature = await wallet.signMessage(challengeData.message);
+    const { signature } = await signMessageWithMetaMask(challengeData.message, address);
 
     const verifyResponse = await fetch(buildApiUrl('/api/auth/activate/verify'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         employeeNo: registerForm.value.employeeNo,
-        address: wallet.address,
+        address,
         signature,
       }),
     });
@@ -196,10 +179,9 @@ async function handleRegister() {
       ...verifyData,
       signature,
     };
-    loginForm.value.privateKey = registerForm.value.privateKey;
-    loginDerivedAddress.value = wallet.address;
+    loginDerivedAddress.value = address;
     activeAuthTab.value = 'login';
-    ElMessage.success('账户已注册，请登录');
+    ElMessage.success('账户已激活，请点击登录');
   } catch (error) {
     ElMessage.error(error.message || '注册失败');
   } finally {
@@ -212,13 +194,13 @@ async function handleLogin() {
     loginLoading.value = true;
     loginResult.value = null;
 
-    const wallet = createWalletFromPrivateKey(loginForm.value.privateKey);
-    loginDerivedAddress.value = wallet.address;
+    const { address } = await connectMetaMask();
+    loginDerivedAddress.value = address;
 
     const nonceResponse = await fetch(buildApiUrl('/api/auth/nonce'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: wallet.address }),
+      body: JSON.stringify({ address }),
     });
 
     const nonceData = await parseJsonResponse(nonceResponse);
@@ -227,13 +209,13 @@ async function handleLogin() {
     }
 
     loginChallenge.value = nonceData;
-    const signature = await wallet.signMessage(nonceData.message);
+    const { signature } = await signMessageWithMetaMask(nonceData.message, address);
 
     const verifyResponse = await fetch(buildApiUrl('/api/auth/verify'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        address: wallet.address,
+        address,
         signature,
       }),
     });
@@ -320,8 +302,6 @@ function resetAuthSession() {
 export function useAuthSession() {
   return {
     activeAuthTab,
-    generateLoginWallet,
-    generateRegisterWallet,
     handleLogin,
     handleRegister,
     hasAnyPermission,

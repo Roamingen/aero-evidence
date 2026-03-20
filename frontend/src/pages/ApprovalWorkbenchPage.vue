@@ -6,6 +6,7 @@ import { ethers } from 'ethers';
 
 import { useAuthSession } from '../stores/authSession';
 import { authorizedJsonRequest } from '../utils/apiClient';
+import { signDigestWithMetaMask } from '../utils/metamask';
 import RecordDetailDrawer from '../components/RecordDetailDrawer.vue';
 
 const auth = useAuthSession();
@@ -115,11 +116,6 @@ function buildDigest(recordId, action, hashes, signerEmployeeNo) {
 }
 
 async function executeAction(record, signerRole, action, withReason = false) {
-  if (!window.ethereum) {
-    ElMessage.error('请先安装 MetaMask');
-    return;
-  }
-
   try {
     let rejectionReason = null;
     if (withReason) {
@@ -150,17 +146,7 @@ async function executeAction(record, signerRole, action, withReason = false) {
     }
 
     const signedDigest = buildDigest(fullRecord.recordId, action, fullRecord.hashes, currentUser.employeeNo);
-
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const signerAddress = await signer.getAddress();
-
-    if (signerAddress.toLowerCase() !== currentUser.address.toLowerCase()) {
-      ElMessage.error(`MetaMask 地址（${signerAddress}）与登录用户地址（${currentUser.address}）不一致`);
-      return;
-    }
-
-    const signature = await signer.signMessage(ethers.getBytes(signedDigest));
+    const { signature } = await signDigestWithMetaMask(signedDigest, currentUser.address);
 
     const payload = { signerRole, action, signedDigest, signature };
     if (rejectionReason) payload.rejectionReason = rejectionReason;

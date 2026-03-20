@@ -53,28 +53,18 @@ async function handleRegisterAndLogin() {
           <!-- 登录表单 -->
           <div v-show="auth.activeAuthTab.value === 'login'" class="form-panel">
             <el-form label-position="top" class="auth-form">
-              <el-form-item label="私钥">
-                <el-input
-                  v-model="auth.loginForm.value.privateKey"
-                  type="textarea"
-                  :rows="3"
-                  resize="none"
-                  placeholder="输入你的私钥，或点下方按钮生成测试钱包"
-                  show-password
-                />
-              </el-form-item>
+              <div class="metamask-hint">
+                点击下方按钮连接 MetaMask 钱包，系统将使用您的钱包地址进行身份验证。
+              </div>
 
               <div class="button-group">
-                <el-button @click="auth.generateLoginWallet" class="secondary-btn">
-                  生成测试钱包
-                </el-button>
                 <el-button
                   type="primary"
                   :loading="auth.loginLoading.value"
                   @click="handleLoginAndGoMaintenance"
                   class="primary-btn"
                 >
-                  登录
+                  连接 MetaMask 登录
                 </el-button>
               </div>
             </el-form>
@@ -130,28 +120,18 @@ async function handleRegisterAndLogin() {
                 </div>
               </div>
 
-              <el-form-item label="私钥">
-                <el-input
-                  v-model="auth.registerForm.value.privateKey"
-                  type="textarea"
-                  :rows="3"
-                  resize="none"
-                  placeholder="输入你的私钥，或点下方按钮生成测试钱包"
-                  show-password
-                />
-              </el-form-item>
+              <div class="metamask-hint">
+                输入工号和邀请码后，点击下方按钮连接 MetaMask 完成账户激活。
+              </div>
 
               <div class="button-group">
-                <el-button @click="auth.generateRegisterWallet" class="secondary-btn">
-                  生成测试钱包
-                </el-button>
                 <el-button
                   type="primary"
                   :loading="auth.registerLoading.value"
                   @click="handleRegisterAndLogin"
                   class="primary-btn"
                 >
-                  注册
+                  连接 MetaMask 注册
                 </el-button>
               </div>
             </el-form>
@@ -500,6 +480,17 @@ async function handleRegisterAndLogin() {
   display: flex;
   gap: 12px;
   margin-top: 24px;
+}
+
+.metamask-hint {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px dashed #d0d5dd;
+  font-size: 13px;
+  color: #607087;
+  line-height: 1.6;
+  margin-top: 8px;
 }
 
 .primary-btn {
