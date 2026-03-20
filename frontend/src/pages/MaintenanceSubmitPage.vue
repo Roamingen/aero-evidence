@@ -31,6 +31,13 @@ const summaryStats = reactive({
   rejected: 0,
 });
 
+// ─── Initialization dialog for new draft ───
+const initDialogVisible = ref(false);
+const initForm = reactive({
+  aircraftRegNo: '',
+  aircraftType: '',
+});
+
 // ─── Current draft ───
 const currentDraftId = ref(null);
 const currentJobCardNo = ref('');
@@ -219,14 +226,38 @@ function statusTagType(status) {
 }
 
 async function handleCreateDraft() {
+  initForm.aircraftRegNo = '';
+  initForm.aircraftType = '';
+  initDialogVisible.value = true;
+}
+
+async function handleConfirmInitialization() {
+  if (!initForm.aircraftRegNo.trim()) {
+    ElMessage.error('请输入飞机注册号');
+    return;
+  }
+  if (!initForm.aircraftType.trim()) {
+    ElMessage.error('请输入机型');
+    return;
+  }
+
   try {
-    const data = await apiJson('/api/maintenance/drafts', { method: 'POST' });
+    const data = await apiJson('/api/maintenance/drafts', {
+      method: 'POST',
+      body: JSON.stringify({
+        aircraftRegNo: initForm.aircraftRegNo,
+        aircraftType: initForm.aircraftType,
+      }),
+    });
     currentDraftId.value = data.draftId;
     currentJobCardNo.value = data.jobCardNo;
     form.value = createInitialForm();
+    form.value.aircraftRegNo = data.aircraftRegNo;
+    form.value.aircraftType = data.aircraftType;
     attachments.value = [];
     finalizeResult.value = null;
     submitResult.value = null;
+    initDialogVisible.value = false;
     pagePhase.value = 'edit';
     ElMessage.success(`草稿已创建，工卡号：${data.jobCardNo}`);
   } catch (error) {
@@ -722,10 +753,10 @@ onMounted(async () => {
         <el-form label-position="top">
           <div class="form-grid two-col">
             <el-form-item label="飞机注册号">
-              <el-input v-model="form.aircraftRegNo" placeholder="例：B-4321" />
+              <div class="readonly-field">{{ form.aircraftRegNo }}</div>
             </el-form-item>
             <el-form-item label="机型">
-              <el-input v-model="form.aircraftType" placeholder="例：Airbus A320-200" />
+              <div class="readonly-field">{{ form.aircraftType }}</div>
             </el-form-item>
           </div>
 
@@ -1179,10 +1210,40 @@ onMounted(async () => {
       </div>
     </template>
 
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- Initialization Dialog for New Draft                         -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <el-dialog v-model="initDialogVisible" title="创建新草稿" width="40%">
+      <el-form label-position="top">
+        <el-form-item label="飞机注册号（必填）">
+          <el-input v-model="initForm.aircraftRegNo" placeholder="例：B-4321" @keyup.enter="handleConfirmInitialization" />
+        </el-form-item>
+        <el-form-item label="机型（必填）">
+          <el-input v-model="initForm.aircraftType" placeholder="例：Airbus A320-200" @keyup.enter="handleConfirmInitialization" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="initDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleConfirmInitialization">创建</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
 <style scoped>
+.readonly-field {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: var(--el-text-color-regular);
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
 .compact-signer-card {
   padding: 0.5rem 0.75rem !important;
 }

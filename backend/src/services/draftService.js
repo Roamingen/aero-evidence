@@ -59,12 +59,24 @@ async function ensureDraftOwnership(draftId, currentUser) {
     return draft;
 }
 
-async function createDraft(currentAddress) {
+async function createDraft(currentAddress, body = {}) {
     const currentUser = await requireCurrentUser(currentAddress);
-    const jobCardNo = generateJobCardNo();
+    const aircraftRegNo = String(body.aircraftRegNo || '').trim();
+    const aircraftType = String(body.aircraftType || '').trim();
+
+    if (!aircraftRegNo) {
+        throw createError('aircraftRegNo 不能为空', 400);
+    }
+    if (!aircraftType) {
+        throw createError('aircraftType 不能为空', 400);
+    }
+
+    const jobCardNo = generateJobCardNo(aircraftRegNo);
 
     const draftId = await maintenanceStore.insertDraftRecord({
         jobCardNo,
+        aircraftRegNo,
+        aircraftType,
         performerUserId: currentUser.id,
         performerEmployeeNo: currentUser.employeeNo,
         performerName: currentUser.name,
@@ -74,6 +86,8 @@ async function createDraft(currentAddress) {
     return {
         draftId,
         jobCardNo,
+        aircraftRegNo,
+        aircraftType,
         status: 'draft',
         performerEmployeeNo: currentUser.employeeNo,
         createdAt: new Date().toISOString(),

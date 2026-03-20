@@ -234,13 +234,13 @@ function generateRecordId(jobCardNo, revision) {
     return ethers.id(`${jobCardNo}:${revision}:${Date.now()}:${crypto.randomUUID()}`);
 }
 
-function generateJobCardNo() {
+function generateJobCardNo(aircraftRegNo) {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const randomSuffix = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
-    return `AUTO-${year}${month}${day}-${randomSuffix}`;
+    return `${aircraftRegNo}-${year}${month}${day}-${randomSuffix}`;
 }
 
 function buildFormPayload(record) {
@@ -513,12 +513,14 @@ function buildBasePayload(body, currentUser, previousRecord = null) {
     const payloadBody = body.payload && typeof body.payload === 'object' ? body.payload : {};
     const aircraftRegNo = normalizeString(body.aircraftRegNo || previousRecord?.aircraftRegNo);
     const aircraftType = normalizeString(body.aircraftType || previousRecord?.aircraftType);
-    const jobCardNo = normalizeString(body.jobCardNo || previousRecord?.jobCardNo || generateJobCardNo());
-    const ataCode = normalizeString(body.ataCode || previousRecord?.ataCode);
-    const workType = normalizeString(body.workType || previousRecord?.workType);
 
     assertRequiredString(aircraftRegNo, 'aircraftRegNo');
     assertRequiredString(aircraftType, 'aircraftType');
+
+    const jobCardNo = normalizeString(body.jobCardNo || previousRecord?.jobCardNo || generateJobCardNo(aircraftRegNo));
+    const ataCode = normalizeString(body.ataCode || previousRecord?.ataCode);
+    const workType = normalizeString(body.workType || previousRecord?.workType);
+
     assertRequiredString(jobCardNo, 'jobCardNo');
     assertRequiredString(ataCode, 'ataCode');
     assertRequiredString(workType, 'workType');

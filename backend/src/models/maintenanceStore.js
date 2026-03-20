@@ -828,11 +828,13 @@ async function insertDraftRecord(data, executor) {
     const db = getExecutor(executor);
     const [result] = await db.execute(
         `INSERT INTO maintenance_records (
-            job_card_no, performer_user_id, performer_employee_no, performer_name,
+            job_card_no, aircraft_reg_no, aircraft_type, performer_user_id, performer_employee_no, performer_name,
             status, created_by, draft_saved_at
-        ) VALUES (?, ?, ?, ?, 'draft', ?, CURRENT_TIMESTAMP)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, CURRENT_TIMESTAMP)`,
         [
             data.jobCardNo,
+            data.aircraftRegNo || null,
+            data.aircraftType || null,
             data.performerUserId,
             data.performerEmployeeNo,
             data.performerName || null,

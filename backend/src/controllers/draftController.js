@@ -2,7 +2,8 @@ const draftService = require('../services/draftService');
 
 async function createDraft(req, res, next) {
     try {
-        const result = await draftService.createDraft(req.auth.address);
+        const body = req.body || {};
+        const result = await draftService.createDraft(req.auth.address, body);
         res.status(201).json(result);
     } catch (error) {
         next(error);
