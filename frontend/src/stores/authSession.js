@@ -128,7 +128,7 @@ function getDefaultWorkspaceRoute() {
   if (hasAnyPermission(['record.view'])) {
     return '/workspace/home';
   }
-  if (hasAnyPermission(['record.approve'])) {
+  if (hasAnyPermission(['record.sign.technician', 'record.sign.reviewer', 'record.sign.release'])) {
     return '/workspace/home';
   }
   if (hasAnyPermission(['user.manage', 'role.manage', 'user.preregister'])) {

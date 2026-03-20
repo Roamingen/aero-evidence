@@ -89,6 +89,15 @@ const submitResult = ref(null);
 
 const currentUser = computed(() => auth.latestLoggedInUser.value);
 
+// ─── Technician signer validation ───
+const technicianValidationWarning = computed(() => {
+  const myEmpNo = currentUser.value?.employeeNo;
+  if (!myEmpNo) return '';
+  const self = form.value.technicianSigners.find((t) => t.employeeNo === myEmpNo);
+  if (self) return `不能指定自己（${myEmpNo}）为技术签名人，提交时您会自动作为第一个技术签名。`;
+  return '';
+});
+
 // ─── Reviewer signer validation ───
 const reviewerValidationWarning = computed(() => {
   const pool = form.value.reviewerSigners.filter((r) => r.employeeNo);
@@ -375,7 +384,7 @@ function buildSaveBody() {
     ataCode: form.value.ataCode || null,
     workType: form.value.workType || null,
     locationCode: form.value.locationCode || null,
-    requiredTechnicianSignatures: form.value.technicianSigners.filter((t) => t.employeeNo).length || 1,
+    requiredTechnicianSignatures: form.value.technicianSigners.filter((t) => t.employeeNo).length + 1,
     requiredReviewerSignatures: form.value.requiredReviewerSignatures,
     isRII: form.value.isRII,
     occurrenceTime: form.value.occurrenceTime ? new Date(form.value.occurrenceTime).toISOString() : null,
@@ -786,11 +795,12 @@ onMounted(async () => {
         <div class="section-title-row">
           <div>
             <div class="section-title">技术人员签名</div>
-            <div class="section-subtitle">所有指定的技术人员均须签名，签名数自动等于人数。</div>
+            <div class="section-subtitle">指定需要额外技术签名的工程师（不含您本人），总签名数 = 1（您）+ 指定人数。</div>
           </div>
           <el-button @click="addRow('technicianSigners', createTechnicianSignerRow)">添加技术人员</el-button>
         </div>
-        <div v-if="form.technicianSigners.length === 0" class="empty-inline-state">暂未指定技术人员。</div>
+        <div v-if="technicianValidationWarning" class="signer-validation-warning">{{ technicianValidationWarning }}</div>
+        <div v-if="form.technicianSigners.length === 0" class="empty-inline-state">暂未指定额外技术人员，提交时仅由您本人签名。</div>
         <div v-for="(t, i) in form.technicianSigners" :key="`tech-${i}`" class="inline-card compact-signer-card">
           <div class="signer-row">
             <span class="signer-label">技术人员 {{ i + 1 }}</span>

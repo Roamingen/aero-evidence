@@ -20,12 +20,12 @@ const navItems = [
     requiredPermissions: [],
   },
   {
-    label: '审批工作台',
-    caption: '待审核、待放行与驳回处理',
+    label: '签名工作台',
+    caption: '待签记录与审核管理',
     icon: 'CircleCheck',
     to: '/workspace/approvals',
     routeName: 'approval-workbench',
-    requiredPermissions: ['record.approve'],
+    requiredPermissions: ['record.sign.technician', 'record.sign.reviewer', 'record.sign.release'],
   },
   {
     label: '提交中心',

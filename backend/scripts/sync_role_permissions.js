@@ -1,9 +1,9 @@
 const { getPool } = require('../src/config/database');
 
 const ROLE_PERMISSION_MATRIX = {
-    engineer_submitter: ['record.create', 'record.submit', 'record.view'],
-    engineer_approver: ['record.create', 'record.submit', 'record.view', 'record.verify', 'record.approve'],
-    admin: ['record.create', 'record.submit', 'record.view', 'record.verify', 'record.approve', 'user.manage', 'role.manage', 'user.preregister'],
+    engineer_submitter: ['record.create', 'record.submit', 'record.view', 'record.sign.technician'],
+    engineer_approver: ['record.create', 'record.submit', 'record.view', 'record.verify', 'record.sign.reviewer', 'record.sign.release'],
+    admin: ['record.create', 'record.submit', 'record.view', 'record.verify', 'record.sign.technician', 'record.sign.reviewer', 'record.sign.release', 'user.manage', 'role.manage', 'user.preregister'],
 };
 
 async function syncRolePermissions() {

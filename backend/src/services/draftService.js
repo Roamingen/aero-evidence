@@ -154,6 +154,11 @@ async function saveDraft(currentAddress, draftId, body) {
 
         if (Array.isArray(body.specifiedSigners)) {
             const signers = await resolveSpecifiedSigners(body.specifiedSigners, []);
+            // 提交人自己已经算第一个技术签名，不能再指定自己
+            const selfAsTech = signers.find(s => s.signerRole === 'technician' && s.signerEmployeeNo === currentUser.employeeNo);
+            if (selfAsTech) {
+                throw createError('不能指定提交人自己为技术签名人（提交时自动作为第一个技术签名）', 400);
+            }
             await maintenanceStore.replaceDraftSpecifiedSigners(draftId, signers, connection);
         }
 
@@ -291,9 +296,7 @@ async function finalizeDraft(currentAddress, draftId) {
     const riiSigners = signerRows.filter(s => s.signer_role === 'rii_inspector');
     const releaseSigners = signerRows.filter(s => s.signer_role === 'release_authority');
 
-    if (technicianSigners.length === 0) {
-        throw createError('至少需要指定一名技术人员', 400);
-    }
+    // n=0 is valid: only the submitter signs as technician
 
     const requiredReviewer = draft.requiredReviewerSignatures || 1;
     const mandatoryReviewerCount = reviewerSigners.filter(s => s.is_required).length;
@@ -312,10 +315,11 @@ async function finalizeDraft(currentAddress, draftId) {
         throw createError('已启用 RII 检查，必须指定一名 RII 检查员', 400);
     }
 
-    // Auto-set requiredTechnicianSignatures = technician count
+    // Auto-set requiredTechnicianSignatures = specified technicians + 1 (submitter)
+    const computedTechSignatures = technicianSigners.length + 1;
     await pool.execute(
         `UPDATE maintenance_records SET required_technician_signatures = ? WHERE id = ?`,
-        [technicianSigners.length, draftId]
+        [computedTechSignatures, draftId]
     );
     const [payloadRows] = await pool.execute(
         `SELECT * FROM maintenance_record_payloads WHERE record_id = ? LIMIT 1`,

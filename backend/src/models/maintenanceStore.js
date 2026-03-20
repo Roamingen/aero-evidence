@@ -106,7 +106,6 @@ function mapSpecifiedSignerRow(row) {
         signerEmployeeNo: row.signer_employee_no,
         signerName: row.signer_name,
         isRequired: Boolean(row.is_required),
-        sequenceNo: Number(row.sequence_no || 0),
         status: row.status,
         signedSignatureId: row.signed_signature_id,
         signedAt: row.signed_at,
@@ -257,7 +256,7 @@ async function getRecordDetailByRecordId(recordId, executor) {
             `SELECT *
              FROM maintenance_record_specified_signers
              WHERE record_id = ?
-             ORDER BY sequence_no ASC, id ASC`,
+             ORDER BY id ASC`,
             [record.id]
         ),
         db.execute(
@@ -546,11 +545,10 @@ async function insertRecordGraph(data, executor) {
                 signer_employee_no,
                 signer_name,
                 is_required,
-                sequence_no,
                 status,
                 signed_signature_id,
                 signed_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 maintenanceRecordDbId,
                 specifiedSigner.signerRole,
@@ -558,7 +556,6 @@ async function insertRecordGraph(data, executor) {
                 specifiedSigner.signerEmployeeNo,
                 specifiedSigner.signerName || null,
                 specifiedSigner.isRequired ? 1 : 0,
-                specifiedSigner.sequenceNo || 0,
                 specifiedSigner.status || 'pending',
                 specifiedSigner.signedSignatureId || null,
                 specifiedSigner.signedAt || null,
@@ -971,8 +968,8 @@ async function replaceDraftReplacements(draftId, replacements, executor) {
 
 async function replaceDraftSpecifiedSigners(draftId, signers, executor) {
     return replaceDraftSubTable(draftId, 'maintenance_record_specified_signers', signers, (_id, s) => ({
-        columns: ['signer_role', 'signer_user_id', 'signer_employee_no', 'signer_name', 'is_required', 'sequence_no', 'status'],
-        values: [s.signerRole, s.signerUserId || null, s.signerEmployeeNo, s.signerName || null, s.isRequired ? 1 : 0, 0, s.status || 'pending'],
+        columns: ['signer_role', 'signer_user_id', 'signer_employee_no', 'signer_name', 'is_required', 'status'],
+        values: [s.signerRole, s.signerUserId || null, s.signerEmployeeNo, s.signerName || null, s.isRequired ? 1 : 0, s.status || 'pending'],
     }), executor);
 }
 
@@ -1164,6 +1161,140 @@ async function upsertDraftManifest(draftId, manifestData, executor) {
     return result.insertId;
 }
 
+// ─── Signing Workbench queries ──────────────────────────────────────
+
+const WORKBENCH_SELECT = `
+    mr.id AS _db_id,
+    mr.record_id,
+    mr.root_record_id,
+    mr.previous_record_id,
+    mr.aircraft_reg_no,
+    mr.aircraft_type,
+    mr.job_card_no,
+    mr.revision,
+    mr.ata_code,
+    mr.work_type,
+    mr.location_code,
+    mr.performer_employee_no,
+    mr.performer_name,
+    mr.required_technician_signatures,
+    mr.required_reviewer_signatures,
+    mr.technician_signature_count,
+    mr.reviewer_signature_count,
+    mr.is_rii,
+    mr.status,
+    mr.rejection_reason,
+    mr.submitted_at,
+    mr.rejected_at,
+    mr.released_at,
+    mr.created_at,
+    mr.updated_at`;
+
+function mapWorkbenchRow(row) {
+    return mapRecordSummaryRow({
+        ...row,
+        specified_signer_count: 0,
+        pending_specified_signer_count: 0,
+    });
+}
+
+async function listPendingForTechnician(employeeNo, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT ${WORKBENCH_SELECT}
+         FROM maintenance_records mr
+         INNER JOIN maintenance_record_specified_signers ms
+             ON ms.record_id = mr.id
+             AND ms.signer_role = 'technician'
+             AND ms.signer_employee_no = ?
+             AND ms.status = 'pending'
+         WHERE mr.status IN ('submitted', 'peer_checked')
+         ORDER BY mr.updated_at DESC
+         LIMIT 50`,
+        [employeeNo]
+    );
+    return rows.map(mapWorkbenchRow);
+}
+
+async function listPendingForDesignatedReviewer(employeeNo, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT ${WORKBENCH_SELECT}
+         FROM maintenance_records mr
+         INNER JOIN maintenance_record_specified_signers ms
+             ON ms.record_id = mr.id
+             AND ms.signer_role = 'reviewer'
+             AND ms.signer_employee_no = ?
+             AND ms.status = 'pending'
+         WHERE mr.status = 'submitted'
+           AND mr.reviewer_signature_count < mr.required_reviewer_signatures
+         ORDER BY mr.updated_at DESC
+         LIMIT 50`,
+        [employeeNo]
+    );
+    return rows.map(mapWorkbenchRow);
+}
+
+async function listPendingForReviewerPool(employeeNo, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT ${WORKBENCH_SELECT}
+         FROM maintenance_records mr
+         WHERE mr.status = 'submitted'
+           AND mr.reviewer_signature_count < mr.required_reviewer_signatures
+           AND mr.id NOT IN (
+               SELECT ms.record_id FROM maintenance_record_specified_signers ms
+               WHERE ms.signer_role = 'reviewer'
+           )
+           AND mr.id NOT IN (
+               SELECT sig.record_id FROM maintenance_record_signatures sig
+               WHERE sig.signer_employee_no = ? AND sig.action = 'reviewer_sign'
+           )
+         ORDER BY mr.updated_at DESC
+         LIMIT 50`,
+        [employeeNo]
+    );
+    return rows.map(mapWorkbenchRow);
+}
+
+async function listPendingForRelease(employeeNo, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT ${WORKBENCH_SELECT}
+         FROM maintenance_records mr
+         WHERE mr.status IN ('submitted', 'peer_checked', 'rii_approved')
+           AND mr.technician_signature_count >= mr.required_technician_signatures
+           AND mr.reviewer_signature_count >= mr.required_reviewer_signatures
+           AND mr.id NOT IN (
+               SELECT sig.record_id FROM maintenance_record_signatures sig
+               WHERE sig.signer_employee_no = ? AND sig.action = 'release'
+           )
+         ORDER BY mr.updated_at DESC
+         LIMIT 50`,
+        [employeeNo]
+    );
+    return rows.map(mapWorkbenchRow);
+}
+
+async function listPendingForRii(employeeNo, executor) {
+    const db = getExecutor(executor);
+    const [rows] = await db.execute(
+        `SELECT ${WORKBENCH_SELECT}
+         FROM maintenance_records mr
+         INNER JOIN maintenance_record_specified_signers ms
+             ON ms.record_id = mr.id
+             AND ms.signer_role = 'rii_inspector'
+             AND ms.signer_employee_no = ?
+             AND ms.status = 'pending'
+         WHERE mr.status = 'peer_checked'
+           AND mr.is_rii = TRUE
+         ORDER BY mr.updated_at DESC
+         LIMIT 50`,
+        [employeeNo]
+    );
+    return rows.map(mapWorkbenchRow);
+}
+
 module.exports = {
     getRecordRowByRecordId,
     getRecordDetailByRecordId,
@@ -1192,4 +1323,9 @@ module.exports = {
     listAttachmentsByDraftId,
     deleteDraftAndChildren,
     upsertDraftManifest,
+    listPendingForTechnician,
+    listPendingForDesignatedReviewer,
+    listPendingForReviewerPool,
+    listPendingForRelease,
+    listPendingForRii,
 };

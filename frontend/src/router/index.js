@@ -53,7 +53,7 @@ const router = createRouter({
           component: ApprovalWorkbenchPage,
           meta: {
             requiresAuth: true,
-            requiredPermissions: ['record.approve'],
+            requiredPermissions: ['record.sign.technician', 'record.sign.reviewer', 'record.sign.release'],
           },
         },
         {

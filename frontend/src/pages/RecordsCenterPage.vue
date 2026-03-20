@@ -5,13 +5,13 @@ import { ElMessage } from 'element-plus';
 
 import { useAuthSession } from '../stores/authSession';
 import { authorizedJsonRequest } from '../utils/apiClient';
+import RecordDetailDrawer from '../components/RecordDetailDrawer.vue';
 
 const auth = useAuthSession();
 
 const loading = ref(false);
-const detailLoading = ref(false);
 const detailVisible = ref(false);
-const selectedRecord = ref(null);
+const detailRecordId = ref(null);
 const records = ref([]);
 const pagination = reactive({
   page: 1,
@@ -91,25 +91,9 @@ async function fetchRecords() {
   }
 }
 
-async function openRecordDetail(recordId) {
-  if (!canLoad.value) {
-    return;
-  }
-
-  try {
-    detailVisible.value = true;
-    detailLoading.value = true;
-    selectedRecord.value = await authorizedJsonRequest(
-      auth.loginResult.value.token,
-      `/api/maintenance/records/${recordId}`,
-      { method: 'GET' },
-    );
-  } catch (error) {
-    detailVisible.value = false;
-    ElMessage.error(error.message || '加载记录详情失败');
-  } finally {
-    detailLoading.value = false;
-  }
+function openRecordDetail(recordId) {
+  detailRecordId.value = recordId;
+  detailVisible.value = true;
 }
 
 function setStatusFilter(value) {
@@ -200,41 +184,6 @@ onMounted(() => {
       <div class="module-subtitle">当前第 {{ pagination.page }} 页，共 {{ pagination.total }} 条记录。后续可继续接服务器端分页组件。</div>
     </section>
 
-    <el-drawer v-model="detailVisible" size="46%" title="检修记录详情">
-      <div v-if="selectedRecord" v-loading="detailLoading" class="module-stack">
-        <section class="module-panel">
-          <div class="module-title">基础信息</div>
-          <div class="detail-grid two-up-grid">
-            <div class="detail-item"><span>记录号</span><strong class="mono">{{ selectedRecord.recordId }}</strong></div>
-            <div class="detail-item"><span>工卡号</span><strong>{{ selectedRecord.jobCardNo }}</strong></div>
-            <div class="detail-item"><span>机号</span><strong>{{ selectedRecord.aircraftRegNo }}</strong></div>
-            <div class="detail-item"><span>状态</span><strong>{{ statusLabel(selectedRecord.status) }}</strong></div>
-            <div class="detail-item"><span>执行人</span><strong>{{ selectedRecord.performerEmployeeNo }}</strong></div>
-            <div class="detail-item"><span>工作类型</span><strong>{{ selectedRecord.workType }}</strong></div>
-          </div>
-        </section>
-
-        <section class="module-panel">
-          <div class="module-title">指定签名人</div>
-          <div v-if="selectedRecord.specifiedSigners.length === 0" class="module-empty-state">当前记录没有配置指定签名人。</div>
-          <div v-else class="tag-flow">
-            <span v-for="signer in selectedRecord.specifiedSigners" :key="`${signer.signerRole}-${signer.signerEmployeeNo}`" class="filter-pill is-active">
-              {{ signer.signerRole }} / {{ signer.signerEmployeeNo }} / {{ signer.status }}
-            </span>
-          </div>
-        </section>
-
-        <section class="module-panel">
-          <div class="module-title">Revision 时间线</div>
-          <div class="timeline-stack">
-            <div v-for="revision in selectedRecord.revisions" :key="revision.recordId" class="timeline-item">
-              <strong>R{{ revision.revision }}</strong>
-              <span>{{ statusLabel(revision.status) }}</span>
-              <span>{{ formatDateTime(revision.createdAt) }}</span>
-            </div>
-          </div>
-        </section>
-      </div>
-    </el-drawer>
+    <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" />
   </div>
 </template>

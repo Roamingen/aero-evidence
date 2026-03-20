@@ -205,7 +205,6 @@ CREATE TABLE IF NOT EXISTS maintenance_record_specified_signers (
     signer_employee_no VARCHAR(50) NOT NULL,
     signer_name VARCHAR(100) DEFAULT NULL,
     is_required BOOLEAN NOT NULL DEFAULT TRUE,
-    sequence_no INT NOT NULL DEFAULT 0,
     status ENUM(
         'pending',
         'signed',

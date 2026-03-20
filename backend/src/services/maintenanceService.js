@@ -198,7 +198,18 @@ function ensureActionMatchesRole(action, signerRole) {
 
 function ensureCurrentUserIsSpecifiedSigner(record, signerRole, currentUser) {
     const roleSigners = getSpecifiedSignersForRole(record, signerRole);
+
     if (roleSigners.length === 0) {
+        const permissionMap = {
+            reviewer: 'record.sign.reviewer',
+            release_authority: 'record.sign.release',
+            technician: 'record.sign.technician',
+            rii_inspector: 'record.sign.reviewer',
+        };
+        const requiredPermission = permissionMap[signerRole];
+        if (requiredPermission && !currentUser.permissions.includes(requiredPermission)) {
+            throw createError(`当前用户无 ${signerRole} 签名权限`, 403);
+        }
         return;
     }
 
@@ -955,7 +966,7 @@ function normalizeStatuses(input) {
 
 async function listRecords(currentAddress, query = {}) {
     const currentUser = await requireCurrentUser(currentAddress);
-    assertUserHasAnyPermission(currentUser, ['record.view', 'record.approve'], '当前用户无权查看检修记录');
+    assertUserHasAnyPermission(currentUser, ['record.view', 'record.sign.technician', 'record.sign.reviewer', 'record.sign.release'], '当前用户无权查看检修记录');
 
     return maintenanceStore.listRecordSummaries({
         page: query.page,
@@ -971,35 +982,39 @@ async function listRecords(currentAddress, query = {}) {
 
 async function getWorkbench(currentAddress) {
     const currentUser = await requireCurrentUser(currentAddress);
-    assertUserHasAnyPermission(currentUser, ['record.approve'], '当前用户无权查看审批工作台');
 
-    const [allRecords, reviewQueue, releaseQueue, rejectedQueue, recentActivity] = await Promise.all([
-        maintenanceStore.listRecordSummaries({ page: 1, pageSize: 1 }),
-        maintenanceStore.listRecordSummaries({ page: 1, pageSize: 6, statuses: ['submitted'] }),
-        maintenanceStore.listRecordSummaries({ page: 1, pageSize: 6, statuses: ['peer_checked', 'rii_approved'] }),
-        maintenanceStore.listRecordSummaries({ page: 1, pageSize: 6, statuses: ['rejected'] }),
-        maintenanceStore.listRecordSummaries({ page: 1, pageSize: 8 }),
+    const SIGN_PERMISSIONS = ['record.sign.technician', 'record.sign.reviewer', 'record.sign.release'];
+    const hasAnySignPermission = SIGN_PERMISSIONS.some((p) => currentUser.permissions.includes(p));
+    if (!hasAnySignPermission) {
+        throw createError('当前用户无签名相关权限', 403);
+    }
+
+    const empNo = currentUser.employeeNo;
+    const hasReviewerPerm = currentUser.permissions.includes('record.sign.reviewer');
+    const hasReleasePerm = currentUser.permissions.includes('record.sign.release');
+
+    const [technician, reviewerDesignated, reviewerPool, release, rii] = await Promise.all([
+        maintenanceStore.listPendingForTechnician(empNo),
+        maintenanceStore.listPendingForDesignatedReviewer(empNo),
+        hasReviewerPerm ? maintenanceStore.listPendingForReviewerPool(empNo) : [],
+        hasReleasePerm ? maintenanceStore.listPendingForRelease(empNo) : [],
+        maintenanceStore.listPendingForRii(empNo),
     ]);
-
-    const releasedCount = (await maintenanceStore.listRecordSummaries({
-        page: 1,
-        pageSize: 1,
-        statuses: ['released'],
-    })).total;
 
     return {
         summary: {
-            totalRecords: allRecords.total,
-            pendingReviewCount: reviewQueue.total,
-            pendingReleaseCount: releaseQueue.total,
-            rejectedCount: rejectedQueue.total,
-            releasedCount,
+            myTechnicianPending: technician.length,
+            myReviewerDesignated: reviewerDesignated.length,
+            myReviewerPool: reviewerPool.length,
+            myReleasePending: release.length,
+            myRiiPending: rii.length,
         },
         queues: {
-            review: reviewQueue.rows,
-            release: releaseQueue.rows,
-            rejected: rejectedQueue.rows,
-            recent: recentActivity.rows,
+            technician,
+            reviewerDesignated,
+            reviewerPool,
+            release,
+            rii,
         },
     };
 }

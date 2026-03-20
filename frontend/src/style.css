@@ -493,6 +493,10 @@ input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.card-grid-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .card-grid-three {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -733,7 +737,7 @@ input {
 }
 
 .primary-summary-card {
-    background: linear-gradient(145deg, rgba(16, 36, 59, 0.98), rgba(27, 68, 107, 0.95));
+    background: linear-gradient(145deg, rgba(16, 36, 59, 0.98), rgba(27, 68, 107, 0.95)) !important;
 }
 
 .primary-summary-card .module-title {
@@ -1355,6 +1359,7 @@ input {
 
     .workspace-summary-grid,
     .two-up-grid,
+    .card-grid-two,
     .card-grid-three,
     .card-grid-four,
     .auth-shell {

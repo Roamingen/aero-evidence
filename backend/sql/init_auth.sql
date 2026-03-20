@@ -179,9 +179,19 @@ VALUES (
         '允许查看检修记录详情和列表'
     ),
     (
-        'record.approve',
-        '审核/放行检修记录',
-        '允许对检修记录执行审核或放行'
+        'record.sign.technician',
+        '技术签名',
+        '允许对检修记录执行工程师技术签名'
+    ),
+    (
+        'record.sign.reviewer',
+        '审核签名',
+        '允许对检修记录执行审核签名'
+    ),
+    (
+        'record.sign.release',
+        '放行签名',
+        '允许对检修记录执行放行签名'
     ),
     (
         'record.verify',
@@ -212,7 +222,7 @@ INSERT INTO
 SELECT r.id, p.id
 FROM roles r
     JOIN permissions p ON p.code IN (
-        'record.create', 'record.submit', 'record.view'
+        'record.create', 'record.submit', 'record.view', 'record.sign.technician'
     )
 WHERE
     r.code = 'engineer_submitter'
@@ -224,7 +234,7 @@ INSERT INTO
 SELECT r.id, p.id
 FROM roles r
     JOIN permissions p ON p.code IN (
-        'record.create', 'record.submit', 'record.view', 'record.verify', 'record.approve'
+        'record.create', 'record.submit', 'record.view', 'record.verify', 'record.sign.reviewer', 'record.sign.release'
     )
 WHERE
     r.code = 'engineer_approver'
@@ -236,7 +246,9 @@ INSERT INTO
 SELECT r.id, p.id
 FROM roles r
     JOIN permissions p ON p.code IN (
-        'record.create', 'record.submit', 'record.view', 'record.verify', 'record.approve', 'user.manage', 'role.manage', 'user.preregister'
+        'record.create', 'record.submit', 'record.view', 'record.verify',
+        'record.sign.technician', 'record.sign.reviewer', 'record.sign.release',
+        'user.manage', 'role.manage', 'user.preregister'
     )
 WHERE
     r.code = 'admin'
