@@ -18,6 +18,7 @@ router.delete('/:draftId', draftController.deleteDraft);
 // Attachment management
 router.post('/:draftId/attachments', upload.array('files', 5), draftController.uploadAttachments);
 router.delete('/:draftId/attachments/:attachmentId', draftController.deleteAttachment);
+router.get('/:draftId/attachments/:attachmentId/preview', draftController.previewAttachment);
 
 // Finalize and submit
 router.post('/:draftId/finalize', draftController.finalizeDraft);

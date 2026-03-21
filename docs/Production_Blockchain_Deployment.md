@@ -333,3 +333,604 @@ curl -X POST --data '{"jsonrpc":"2.0","method":"qbft_getValidatorsByBlockNumber"
 ```
 
 如果列表中出现第二台节点地址，说明扩容成功。
+
+---
+
+# 第二部分：后端应用部署 (Node.js + MySQL)
+
+## 前置准备
+
+### 10. 环境和依赖
+
+在 Ubuntu 服务器安装必要工具：
+
+```bash
+# 更新系统
+sudo apt update && sudo apt upgrade -y
+
+# 安装 Node.js (推荐 18+)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# 安装 MySQL (8.0+)
+sudo apt install -y mysql-server
+
+# 验证
+node -v      # v18.x
+npm -v       # 9.x
+mysql --version
+```
+
+### 11. MySQL 初始化
+
+**重要**：Aero Evidence 系统的 MySQL 是**中心化的数据源**。在多节点场景下，所有 Besu 节点都会连接同一个 MySQL 实例（通过网络或 RDS）。
+
+#### 本地单服务器部署（推荐用 RDS）
+
+如果你用云服务商的 MySQL RDS：
+
+```bash
+# 创建数据库
+mysql -h your-rds-endpoint.rds.amazonaws.com -u admin -p << 'EOF'
+CREATE DATABASE aero_evidence CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+EXIT;
+EOF
+```
+
+如果是本地 MySQL：
+
+```bash
+# 启动 MySQL
+sudo systemctl start mysql
+sudo systemctl enable mysql   # 开机自启
+
+# 初始化数据库（在本节点或服务器本地执行）
+mysql -u root -p << 'EOF'
+CREATE DATABASE aero_evidence CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'aero'@'%' IDENTIFIED BY '你的安全密码';
+GRANT ALL PRIVILEGES ON aero_evidence.* TO 'aero'@'%';
+FLUSH PRIVILEGES;
+EXIT;
+EOF
+```
+
+#### 导入初始化脚本
+
+从本地开发环境上传初始化脚本到服务器：
+
+```bash
+# 在本地项目目录执行
+scp backend/sql/init_auth.sql root@你的服务器IP:/tmp/
+scp backend/sql/init_maintenance_v2.sql root@你的服务器IP:/tmp/
+
+# 在服务器上执行
+ssh root@你的服务器IP
+mysql -u aero -p aero_evidence < /tmp/init_auth.sql
+mysql -u aero -p aero_evidence < /tmp/init_maintenance_v2.sql
+```
+
+### 12. 准备后端代码
+
+在服务器上克隆或上传项目：
+
+```bash
+# 方案 A：从 Git 克隆（如果有权限）
+git clone <你的项目仓库> /opt/aero-evidence
+cd /opt/aero-evidence/backend
+
+# 方案 B：从本地上传（开发阶段推荐）
+scp -r backend/ root@你的服务器IP:/opt/aero-evidence/backend
+ssh root@你的服务器IP
+cd /opt/aero-evidence/backend
+```
+
+### 13. 配置后端环境变量
+
+在 `/opt/aero-evidence/backend/.env` 中创建：
+
+```bash
+# 数据库配置（指向中心化 MySQL）
+DB_HOST=mysql.company.com          # 或本地 127.0.0.1
+DB_PORT=3306
+DB_USER=aero
+DB_PASSWORD=你的安全密码
+DB_NAME=aero_evidence
+
+# 区块链 RPC 配置
+CHAIN_RPC_URL=http://127.0.0.1:8545  # 或其他节点的 RPC 地址
+
+# 后端服务配置
+PORT=3000
+NODE_ENV=production
+JWT_SECRET=你生成的长随机字符串（32位以上）
+
+# 合约部署信息（从部署时保存）
+CHAIN_CONTRACT_ADDRESS=0x...  # 从 deployment info 获取
+CHAIN_DEPLOYER_ADDRESS=0x...
+
+# 图片检测服务（如果有）
+IMAGE_DETECTOR_URL=http://localhost:5000
+
+# 日志配置
+LOG_LEVEL=info
+```
+
+**安全提示**：使用 `chmod 600 .env` 保护文件权限。
+
+### 14. 安装后端依赖并启动
+
+```bash
+cd /opt/aero-evidence/backend
+
+# 安装依赖
+npm install --omit=dev   # 生产环境只装生产依赖
+
+# 验证合约部署信息存在
+ls -lah ./deployments/
+
+# 启动后端服务
+npm start  # 或 node src/index.js
+
+# 验证后端已启动
+curl http://127.0.0.1:3000/api/health 2>/dev/null || echo "Backend not ready"
+```
+
+### 15. 后端进程管理（PM2）
+
+强烈推荐用 PM2 管理后端进程，以便自动重启和日志管理：
+
+```bash
+# 安装 PM2（全局）
+sudo npm install -g pm2
+
+# 创建启动配置 /opt/aero-evidence/backend/ecosystem.config.js
+cat > ecosystem.config.js << 'EOF'
+module.exports = {
+  apps: [
+    {
+      name: 'aero-backend',
+      script: 'src/index.js',
+      instances: 'max',
+      exec_mode: 'cluster',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+      },
+      error_file: './logs/error.log',
+      out_file: './logs/out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '10s',
+    },
+  ],
+};
+EOF
+
+# 启动
+pm2 start ecosystem.config.js
+
+# 设置开机自启
+pm2 startup
+pm2 save
+
+# 查看状态
+pm2 status
+pm2 logs aero-backend
+```
+
+---
+
+# 第三部分：前端部署
+
+## 16. 前端构建和部署
+
+### 本地构建
+
+```bash
+cd frontend
+
+# 安装依赖
+npm install
+
+# 生产构建（生成 dist/ 目录）
+npm run build
+
+# 验证构建产物
+ls -lah dist/
+```
+
+### 部署前端到服务器
+
+#### 方案 A：使用 Nginx 静态托管（推荐）
+
+```bash
+# 在服务器安装 Nginx
+sudo apt install -y nginx
+
+# 上传构建产物
+scp -r frontend/dist root@你的服务器IP:/var/www/aero-evidence/
+
+# 配置 Nginx
+sudo tee /etc/nginx/sites-available/aero-evidence << 'EOF'
+server {
+    listen 80;
+    server_name 你的域名或服务器IP;
+
+    # 前端静态文件
+    location / {
+        root /var/www/aero-evidence;
+        try_files $uri $uri/ /index.html;
+        expires 1h;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    # API 代理（转发到后端）
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 日志
+    access_log /var/log/nginx/aero-access.log;
+    error_log /var/log/nginx/aero-error.log;
+}
+EOF
+
+# 启用配置
+sudo ln -s /etc/nginx/sites-available/aero-evidence /etc/nginx/sites-enabled/
+
+# 移除默认配置
+sudo rm /etc/nginx/sites-enabled/default
+
+# 测试配置
+sudo nginx -t
+
+# 启动 Nginx
+sudo systemctl restart nginx
+sudo systemctl enable nginx
+```
+
+#### 方案 B：使用 Docker 部署前端
+
+```bash
+# 创建前端 Dockerfile
+cat > frontend/Dockerfile << 'EOF'
+FROM node:18-alpine as builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/nginx.conf
+EXPOSE 5173
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+
+# 构建镜像
+docker build -t aero-frontend:latest frontend/
+
+# 在 docker-compose.yml 中添加前端服务
+```
+
+### 17. 前端环境配置
+
+创建 `frontend/.env.production`：
+
+```bash
+# 生产环境 API 地址
+VITE_API_BASE_URL=http://你的域名/api
+# 或直接用后端地址（如果前后端同机器）
+VITE_API_BASE_URL=http://127.0.0.1:3000/api
+
+# 区块链 RPC（如果前端直接调用）
+VITE_CHAIN_RPC_URL=http://你的服务器IP:8545
+```
+
+确保构建时使用这个文件：
+
+```bash
+npm run build  # Vite 会自动读取 .env.production
+```
+
+---
+
+# 第四部分：监控、日志和故障恢复
+
+## 18. 系统监控检查清单
+
+### 区块链状态监控
+
+```bash
+# 创建监控脚本 /opt/aero-evidence/scripts/monitor-besu.sh
+#!/bin/bash
+set -e
+
+RPC_URL="http://127.0.0.1:8545"
+ALERT_EMAIL="admin@company.com"
+
+# 检查 RPC 连接
+check_rpc() {
+    local response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' $RPC_URL)
+    if echo "$response" | grep -q "\"result\""; then
+        return 0
+    else
+        echo "RPC 不可用" | mail -s "Besu Alert" $ALERT_EMAIL
+        return 1
+    fi
+}
+
+# 检查出块频率（应该约 2 秒）
+check_block_rate() {
+    local block1=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' $RPC_URL | jq -r '.result')
+    sleep 5
+    local block2=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' $RPC_URL | jq -r '.result')
+    local blocks_in_5s=$((16#${block2:2} - 16#${block1:2}))
+
+    if [ "$blocks_in_5s" -lt 2 ]; then
+        echo "出块缓慢: 5秒只出 $blocks_in_5s 块" | mail -s "Besu Alert" $ALERT_EMAIL
+    fi
+}
+
+# 检查节点 peer 连接
+check_peers() {
+    local peers=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' $RPC_URL | jq -r '.result')
+    if [ "$peers" = "0x0" ] && [ $EXPECTED_PEERS -gt 0 ]; then
+        echo "节点未连接到 peer" | mail -s "Besu Alert" $ALERT_EMAIL
+    fi
+}
+
+check_rpc && check_block_rate && check_peers
+echo "Besu 监控检查完成 $(date)"
+```
+
+启用定时检查：
+
+```bash
+# 每 10 分钟检查一次
+(crontab -l 2>/dev/null; echo "*/10 * * * * /opt/aero-evidence/scripts/monitor-besu.sh") | crontab -
+```
+
+### 数据库监控
+
+```bash
+# 检查数据库连接和数据量
+mysql -h $DB_HOST -u $DB_USER -p$DB_PASSWORD -e << 'EOF'
+SELECT
+    TABLE_NAME,
+    (SELECT SUM(TABLE_ROWS) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='aero_evidence') as total_records,
+    (SELECT COUNT(*) FROM maintenance_records) as record_count,
+    (SELECT COUNT(*) FROM maintenance_record_signatures) as signature_count
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA='aero_evidence'
+LIMIT 5;
+EOF
+```
+
+### 后端健康检查
+
+```bash
+# 检查后端 API 是否响应
+curl -s http://127.0.0.1:3000/api/health | jq .
+
+# 预期响应：{ "status": "ok", "timestamp": "..." }
+```
+
+## 19. 日志聚合和查看
+
+### Besu 日志
+
+```bash
+# 实时查看 Besu 日志
+docker logs -f besu-production-rpc
+
+# 搜索特定错误
+docker logs besu-production-rpc 2>&1 | grep -i error | tail -20
+
+# 保存日志到文件（用于分析）
+docker logs besu-production-rpc > /tmp/besu-full.log 2>&1
+```
+
+### 后端日志
+
+```bash
+# 如果用 PM2
+pm2 logs aero-backend
+
+# 查看错误日志
+tail -f /opt/aero-evidence/backend/logs/error.log
+```
+
+### Nginx 日志
+
+```bash
+# 查看访问日志
+tail -f /var/log/nginx/aero-access.log
+
+# 查看错误日志
+tail -f /var/log/nginx/aero-error.log
+```
+
+## 20. 常见故障恢复
+
+### 问题：后端无法连接数据库
+
+```bash
+# 检查 MySQL 是否在线
+mysql -h $DB_HOST -u $DB_USER -p$DB_PASSWORD -e "SELECT 1;"
+
+# 检查后端的 .env 配置
+cat /opt/aero-evidence/backend/.env | grep DB_
+
+# 重启后端
+pm2 restart aero-backend
+```
+
+### 问题：区块同步卡住
+
+```bash
+# 检查最新区块高度是否更新
+curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://127.0.0.1:8545 | jq '.result'
+sleep 10
+# 再查一次，应该增加
+
+# 如果卡住，重启节点
+cd /opt/besu-network
+docker-compose down
+docker-compose up -d
+
+# 如果仍然卡住，清除数据重新同步
+docker-compose down
+rm -rf ./data/*
+docker-compose up -d
+```
+
+### 问题：磁盘空间不足
+
+```bash
+# 查看磁盘使用情况
+df -h
+
+# 查看 Besu 数据大小
+du -sh /opt/besu-network/data
+
+# 如果需要清理，先备份再删除旧块
+docker-compose down
+cp -r ./data ./data.backup
+rm -rf ./data/*
+docker-compose up -d
+```
+
+---
+
+# 第五部分：安全加固
+
+## 21. 防火墙配置
+
+```bash
+# 使用 UFW（Ubuntu 防火墙）
+sudo ufw enable
+
+# 只开放必要的端口
+sudo ufw allow 22/tcp        # SSH
+sudo ufw allow 80/tcp        # HTTP
+sudo ufw allow 443/tcp       # HTTPS（后续配置）
+sudo ufw allow 8545/tcp      # Besu RPC（可选限制来源）
+sudo ufw allow 30303/tcp     # P2P（多节点时需要）
+sudo ufw allow 30303/udp
+
+# 查看规则
+sudo ufw status
+```
+
+**云服务商配置**：如果用 AWS/阿里云等，在安全组中设置相同的规则。
+
+## 22. SSL/TLS 配置（HTTPS）
+
+使用 Let's Encrypt 自动化 SSL：
+
+```bash
+# 安装 Certbot
+sudo apt install -y certbot python3-certbot-nginx
+
+# 自动配置 SSL（需要域名指向这个服务器）
+sudo certbot --nginx -d your-domain.com
+
+# 自动续期
+sudo systemctl enable certbot.timer
+sudo systemctl start certbot.timer
+
+# 验证证书
+sudo certbot renew --dry-run
+```
+
+修改 Nginx 配置自动重定向 HTTP 到 HTTPS（Certbot 通常会自动做）：
+
+```bash
+# 验证配置
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## 23. 敏感数据保护
+
+```bash
+# 保护环境变量文件
+chmod 600 /opt/aero-evidence/backend/.env
+
+# 不要把 .env 提交到 Git
+cat > /opt/aero-evidence/backend/.gitignore << 'EOF'
+.env
+.env.local
+.env.*.local
+node_modules/
+dist/
+logs/
+EOF
+```
+
+---
+
+# 完整部署清单
+
+使用这个清单确保所有步骤都完成：
+
+- [ ] 1. Besu QBFT 节点启动并稳定出块
+- [ ] 2. MySQL 数据库创建和初始化
+- [ ] 3. 后端环境变量配置正确
+- [ ] 4. 后端 `npm install` 和 `npm start` 成功
+- [ ] 5. 后端 PM2 进程管理配置
+- [ ] 6. 前端构建 (`npm run build`)
+- [ ] 7. Nginx 配置并启动
+- [ ] 8. 防火墙规则配置
+- [ ] 9. SSL 证书配置（生产环境）
+- [ ] 10. 监控脚本部署和定时任务配置
+- [ ] 11. 日志聚合和查看测试
+- [ ] 12. 从本地浏览器访问 https://your-domain 测试
+
+---
+
+# 多节点部署补充说明
+
+当你准备扩展到多个服务器时，关键是：
+
+1. **MySQL 必须是共享的**（单个中心化实例或 RDS）
+2. **每台服务器有自己的 Besu 节点**（连接到同一个 MySQL）
+3. **Besu 节点通过 P2P 保持链同步**
+4. **所有 API 请求通过各自的后端，但都读写同一个 MySQL**
+
+示例多节点配置：
+
+```
+北京服务器：
+  - Besu 节点 (RPC 8545)
+  - Backend (3000)
+  - Nginx (80/443)
+  → DB_HOST=central-mysql.company.com
+
+上海服务器：
+  - Besu 节点 (RPC 8545)
+  - Backend (3000)
+  - Nginx (80/443)
+  → DB_HOST=central-mysql.company.com
+
+中央 MySQL RDS：
+  - aero_evidence 数据库
+  - 所有节点的数据源
+```
+
+---
+
+**最后更新**: 2026-03-21
+**版本**: 3.0（包含后端、前端、监控、安全）

@@ -951,6 +951,30 @@ async function listRevisions(recordId) {
     return maintenanceStore.listRevisionsByRootRecordId(record.rootRecordId);
 }
 
+async function getRecordAttachmentForPreview(recordId, attachmentId) {
+    const record = await maintenanceStore.getRecordDetailByRecordId(recordId);
+    if (!record) {
+        throw createError('检修记录不存在', 404);
+    }
+
+    const attachment = await maintenanceStore.getAttachmentByDraftAndId(record.id, attachmentId);
+    if (!attachment) {
+        return null;
+    }
+
+    return attachment;
+}
+
+async function getRecordAttachmentsForDownload(recordId) {
+    const record = await maintenanceStore.getRecordDetailByRecordId(recordId);
+    if (!record) {
+        throw createError('检修记录不存在', 404);
+    }
+
+    const attachments = await maintenanceStore.listAttachmentsByDraftId(record.id);
+    return { record, attachments };
+}
+
 function normalizeStatuses(input) {
     if (!input) {
         return [];
@@ -1043,6 +1067,8 @@ module.exports = {
     },
     appendSignature,
     getRecord,
+    getRecordAttachmentForPreview,
+    getRecordAttachmentsForDownload,
     getWorkbench,
     listRevisions,
     listRecords,

@@ -1,4 +1,7 @@
 const draftService = require('../services/draftService');
+const fs = require('fs');
+const path = require('path');
+const { STORAGE_ATTACHMENTS_DIR } = require('../middlewares/uploadMiddleware');
 
 async function createDraft(req, res, next) {
     try {
@@ -64,6 +67,44 @@ async function deleteAttachment(req, res, next) {
     }
 }
 
+async function previewAttachment(req, res, next) {
+    try {
+        const attachment = await draftService.getAttachmentForPreview(
+            req.auth.address,
+            req.params.draftId,
+            req.params.attachmentId
+        );
+
+        if (!attachment) {
+            return res.status(404).json({ message: '附件不存在' });
+        }
+
+        const fullPath = path.resolve(STORAGE_ATTACHMENTS_DIR, '..', attachment.storagePath);
+
+        // 检查文件是否存在
+        if (!fs.existsSync(fullPath)) {
+            return res.status(404).json({ message: '文件不存在' });
+        }
+
+        // 设置响应头
+        res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.originalFileName || 'download')}"`);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+
+        // 流式发送文件
+        const fileStream = fs.createReadStream(fullPath);
+        fileStream.pipe(res);
+        fileStream.on('error', (err) => {
+            console.error('File stream error:', err);
+            if (!res.headersSent) {
+                res.status(500).json({ message: '读取文件失败' });
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function finalizeDraft(req, res, next) {
     try {
         const result = await draftService.finalizeDraft(req.auth.address, req.params.draftId);
@@ -90,6 +131,7 @@ module.exports = {
     deleteDraft,
     uploadAttachments,
     deleteAttachment,
+    previewAttachment,
     finalizeDraft,
     submitDraft,
 };

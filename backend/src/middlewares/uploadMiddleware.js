@@ -30,6 +30,7 @@ const ALLOWED_MIME_TYPES = new Set([
     'text/csv',
 ]);
 
+// 这里是文件上传的限制：最大50mb，限制个数不超过5
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_FILES_PER_REQUEST = 5;
 

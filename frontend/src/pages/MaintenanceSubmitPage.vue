@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Upload, Delete, Document, Picture, VideoPlay, Files } from '@element-plus/icons-vue';
+import { Upload, Delete, Document, Picture, VideoPlay, Files, Loading } from '@element-plus/icons-vue';
 
 import { useAuthSession } from '../stores/authSession';
 import { buildApiUrl } from '../utils/apiBase';
@@ -81,6 +81,7 @@ function createInitialForm() {
 
 const form = ref(createInitialForm());
 const attachments = ref([]);
+const attachmentPreviewUrls = reactive({});  // Cache for blob URLs
 const saving = ref(false);
 const finalizing = ref(false);
 const submitting = ref(false);
@@ -346,13 +347,26 @@ function populateFormFromDraft(data) {
   const rel = signers.find((s) => s.signerRole === 'release_authority');
   form.value.releaseAuthority = rel ? (rel.employeeNo || rel.signerEmployeeNo || '') : '';
   attachments.value = (data.attachments || []).map((a) => ({
-    id: a.id,
+    id: a.attachmentId,
+    attachmentId: a.attachmentId,
+    originalFileName: a.originalFileName || a.fileName || '',
     fileName: a.fileName || a.originalFileName || '',
     fileSize: a.fileSize || 0,
     mimeType: a.mimeType || '',
     contentHash: a.contentHash || '',
     attachmentType: a.attachmentType || 'document',
   }));
+
+  // ─── Preload image preview URLs ───
+  for (const att of attachments.value) {
+    if (isImageFile(att.attachmentType)) {
+      getAttachmentPreviewBlobUrl(att).then((blobUrl) => {
+        if (blobUrl) {
+          attachmentPreviewUrls[att.attachmentId] = blobUrl;
+        }
+      });
+    }
+  }
 }
 
 async function handleDeleteDraft(draft) {
@@ -430,6 +444,35 @@ function buildSaveBody() {
   };
 }
 
+// ─── Attachment upload limits ───
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const MAX_FILES_PER_REQUEST = 5;
+
+// ─── File validation before upload ───
+function handleBeforeFileUpload(file) {
+  // 检查单个文件大小
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    ElMessage.error(
+      `文件 "${file.name}" 超过大小限制。` +
+      `文件大小：${formatFileSize(file.size)}，` +
+      `最大允许：${MAX_FILE_SIZE_MB}MB`
+    );
+    return false;
+  }
+
+  // 检查已上传的文件数量 + 即将上传的文件数
+  // （el-upload 的 file-list 在上传前会包含即将上传的文件）
+  if (attachments.value.length >= MAX_FILES_PER_REQUEST) {
+    ElMessage.error(
+      `已达到上传文件数量限制。当前已上传：${attachments.value.length}，最多允许：${MAX_FILES_PER_REQUEST}`
+    );
+    return false;
+  }
+
+  return true;
+}
+
 // ─── Attachment upload ───
 async function handleFileUpload(uploadEvent) {
   const file = uploadEvent.file;
@@ -448,14 +491,26 @@ async function handleFileUpload(uploadEvent) {
     if (!response.ok) throw new Error(data.message || '上传失败');
 
     for (const att of data.attachments || []) {
-      attachments.value.push({
+      const newAtt = {
         id: att.attachmentId,
+        attachmentId: att.attachmentId,
+        originalFileName: att.fileName,
         fileName: att.fileName,
         fileSize: att.fileSize,
         mimeType: att.mimeType,
         contentHash: att.contentHash,
         attachmentType: att.attachmentType || 'document',
-      });
+      };
+      attachments.value.push(newAtt);
+
+      // Preload image preview URL
+      if (isImageFile(newAtt.attachmentType)) {
+        getAttachmentPreviewBlobUrl(newAtt).then((blobUrl) => {
+          if (blobUrl) {
+            attachmentPreviewUrls[newAtt.attachmentId] = blobUrl;
+          }
+        });
+      }
     }
     ElMessage.success(`文件"${file.name}"上传成功`);
   } catch (error) {
@@ -467,9 +522,17 @@ async function handleFileUpload(uploadEvent) {
 
 async function handleDeleteAttachment(att) {
   try {
-    await apiFetch(`/api/maintenance/drafts/${currentDraftId.value}/attachments/${att.id}`, {
+    const response = await apiFetch(`/api/maintenance/drafts/${currentDraftId.value}/attachments/${att.id}`, {
       method: 'DELETE',
     });
+
+    // Check if delete was successful (204 No Content or 200 OK)
+    if (!response.ok) {
+      const errorData = await parseJsonResponse(response);
+      throw new Error(errorData.message || `删除失败：${response.statusText}`);
+    }
+
+    // Only remove from UI after successful deletion
     attachments.value = attachments.value.filter((a) => a.id !== att.id);
     ElMessage.success('附件已删除');
   } catch (error) {
@@ -481,6 +544,32 @@ function getAttachmentIcon(type) {
   if (type === 'image') return Picture;
   if (type === 'video') return VideoPlay;
   return Document;
+}
+
+function getAttachmentPreviewUrl(att) {
+  return buildApiUrl(`/api/maintenance/drafts/${currentDraftId.value}/attachments/${att.attachmentId}/preview`);
+}
+
+async function getAttachmentPreviewBlobUrl(att) {
+  try {
+    const url = getAttachmentPreviewUrl(att);
+    const response = await fetch(url, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      console.error(`Failed to load image: ${response.statusText}`);
+      return null;
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.error('Error loading preview:', error);
+    return null;
+  }
+}
+
+function isImageFile(attachmentType) {
+  return attachmentType === 'image';
 }
 
 function formatFileSize(bytes) {
@@ -978,7 +1067,7 @@ onMounted(async () => {
         <div class="section-title-row">
           <div>
             <div class="section-title">附件管理</div>
-            <div class="section-subtitle">拖拽或点击上传文件，支持图片、PDF、Office 文档、视频等。单文件最大 50MB。</div>
+            <div class="section-subtitle">拖拽或点击上传文件，前端会自动检查文件大小，超过限制会给出提示。</div>
           </div>
         </div>
 
@@ -986,6 +1075,7 @@ onMounted(async () => {
           :auto-upload="true"
           :show-file-list="false"
           :http-request="handleFileUpload"
+          :before-upload="handleBeforeFileUpload"
           :disabled="uploading"
           drag
           multiple
@@ -999,18 +1089,38 @@ onMounted(async () => {
           </div>
         </el-upload>
 
+        <div class="upload-limit-hint" style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background-color: var(--el-fill-color-light); border-radius: 4px; font-size: 0.85rem; color: var(--el-text-color-secondary);">
+          <div>✓ 支持格式：图片（JPG/PNG/GIF 等）、PDF、Office 文档（Word/Excel/PowerPoint）、视频（MP4 等）、纯文本/CSV</div>
+          <div style="margin-top: 0.3rem;">✓ 限制：单文件最大 {{ MAX_FILE_SIZE_MB }}MB，一次最多上传 {{ MAX_FILES_PER_REQUEST }} 个文件，当前已上传 {{ attachments.length }} 个</div>
+        </div>
+
         <div v-if="attachments.length === 0" class="empty-inline-state" style="margin-top: 0.75rem">
           暂无附件。上传后将自动计算文件 SHA-256 哈希。
         </div>
 
         <div v-for="att in attachments" :key="att.id" class="inline-card" style="margin-top: 0.75rem">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <el-icon :size="24" style="color: var(--el-color-primary); flex-shrink: 0">
+            <!-- Image preview thumbnail -->
+            <el-image
+              v-if="isImageFile(att.attachmentType) && attachmentPreviewUrls[att.attachmentId]"
+              :src="attachmentPreviewUrls[att.attachmentId]"
+              :preview-src-list="[attachmentPreviewUrls[att.attachmentId]]"
+              style="width: 60px; height: 60px; flex-shrink: 0; border-radius: 4px; object-fit: cover; cursor: pointer;"
+            />
+            <!-- Image loading placeholder -->
+            <div
+              v-else-if="isImageFile(att.attachmentType)"
+              style="width: 60px; height: 60px; flex-shrink: 0; border-radius: 4px; background: var(--el-fill-color-light); display: flex; align-items: center; justify-content: center; color: var(--el-text-color-secondary);"
+            >
+              <el-icon><Loading /></el-icon>
+            </div>
+            <!-- Non-image icon -->
+            <el-icon v-else :size="24" style="color: var(--el-color-primary); flex-shrink: 0">
               <component :is="getAttachmentIcon(att.attachmentType)" />
             </el-icon>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                {{ att.fileName }}
+                {{ att.originalFileName }}
               </div>
               <div style="font-size: 0.8rem; color: var(--el-text-color-secondary); margin-top: 0.2rem;">
                 {{ formatFileSize(att.fileSize) }} &middot; {{ att.mimeType }}
@@ -1111,8 +1221,16 @@ onMounted(async () => {
 
         <div v-if="attachments.length > 0" style="margin-top: 0.75rem">
           <div style="font-weight: 500; margin-bottom: 0.25rem">附件 ({{ attachments.length }})</div>
-          <div v-for="att in attachments" :key="att.id" style="font-size: 0.85rem; padding: 0.25rem 0; color: var(--el-text-color-regular);">
-            {{ att.fileName }} ({{ formatFileSize(att.fileSize) }})
+          <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+            <div v-for="att in attachments" :key="att.id" style="font-size: 0.85rem; color: var(--el-text-color-regular); display: flex; align-items: center; gap: 0.5rem;">
+              <el-image
+                v-if="isImageFile(att.attachmentType) && attachmentPreviewUrls[att.attachmentId]"
+                :src="attachmentPreviewUrls[att.attachmentId]"
+                :preview-src-list="[attachmentPreviewUrls[att.attachmentId]]"
+                style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; cursor: pointer; flex-shrink: 0;"
+              />
+              <span>{{ att.originalFileName }} ({{ formatFileSize(att.fileSize) }})</span>
+            </div>
           </div>
         </div>
       </div>

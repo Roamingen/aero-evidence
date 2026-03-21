@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAuthSession } from '../stores/authSession';
 import { authorizedJsonRequest } from '../utils/apiClient';
+import { buildApiUrl } from '../utils/apiBase';
+import { Loading, Download } from '@element-plus/icons-vue';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -13,6 +15,7 @@ const emit = defineEmits(['update:visible']);
 const auth = useAuthSession();
 const loading = ref(false);
 const record = ref(null);
+const attachmentPreviewUrls = ref({});  // Cache for blob URLs
 
 const internalVisible = computed({
   get: () => props.visible,
@@ -67,7 +70,89 @@ function statusTagType(s) {
   return m[s] || 'info';
 }
 
+// ─── Image preview functions ───
+function isImageFile(attachmentType) {
+  return attachmentType === 'image';
+}
+
+async function getAttachmentPreviewBlobUrl(recordId, att) {
+  try {
+    const token = auth.loginResult.value?.token;
+    if (!token) return null;
+
+    // 直接构建完整的 API URL，而不依赖 buildApiUrl
+    const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:3000' : '';
+    const url = `${baseUrl}/api/maintenance/records/${recordId}/attachments/${att.attachmentId}/preview`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      console.error(`Failed to load image: ${response.statusText}`);
+      return null;
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.error('Error loading preview:', error);
+    return null;
+  }
+}
+
 // ─── Fetch data on recordId change ───
+const downloadingAll = ref(false);
+
+function triggerBlobDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function downloadAttachment(att) {
+  try {
+    const token = auth.loginResult.value?.token;
+    if (!token) return;
+    const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:3000' : '';
+    const url = `${baseUrl}/api/maintenance/records/${props.recordId}/attachments/${att.attachmentId}/preview`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(response.statusText);
+    const blob = await response.blob();
+    triggerBlobDownload(blob, att.originalFileName || att.fileName || 'download');
+  } catch (error) {
+    ElMessage.error('下载附件失败');
+    console.error('Download error:', error);
+  }
+}
+
+async function downloadAllAttachments() {
+  try {
+    downloadingAll.value = true;
+    const token = auth.loginResult.value?.token;
+    if (!token) return;
+    const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:3000' : '';
+    const url = `${baseUrl}/api/maintenance/records/${props.recordId}/attachments/download-all`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(response.statusText);
+    const blob = await response.blob();
+    const fileName = `attachments-${record.value?.jobCardNo || 'record'}.zip`;
+    triggerBlobDownload(blob, fileName);
+  } catch (error) {
+    ElMessage.error('下载全部附件失败');
+    console.error('Download all error:', error);
+  } finally {
+    downloadingAll.value = false;
+  }
+}
+
 watch(
   () => [props.recordId, props.visible],
   async ([newId, vis]) => {
@@ -76,8 +161,21 @@ watch(
     if (!token) return;
     loading.value = true;
     record.value = null;
+    attachmentPreviewUrls.value = {};
     try {
       record.value = await authorizedJsonRequest(token, `/api/maintenance/records/${newId}`, { method: 'GET' });
+
+      // ─── Preload image preview URLs ───
+      if (record.value.attachments && Array.isArray(record.value.attachments)) {
+        for (const att of record.value.attachments) {
+          if (isImageFile(att.attachmentType)) {
+            const blobUrl = await getAttachmentPreviewBlobUrl(newId, att);
+            if (blobUrl) {
+              attachmentPreviewUrls.value[att.attachmentId] = blobUrl;
+            }
+          }
+        }
+      }
     } catch (err) {
       ElMessage.error(err.message || '加载记录详情失败');
     } finally {
@@ -195,7 +293,7 @@ watch(
               <div class="timeline-dot"></div>
               <div class="timeline-content">
                 <div class="timeline-head">
-                  <el-tag :type="sig.action === 'reject' ? 'danger' : sig.action === 'release' ? 'success' : ''" size="small">{{ actionLabel(sig.action) }}</el-tag>
+                  <el-tag :type="sig.action === 'reject' ? 'danger' : sig.action === 'release' ? 'success' : 'info'" size="small">{{ actionLabel(sig.action) }}</el-tag>
                   <span class="timeline-time">{{ formatDateTime(sig.signedAt) }}</span>
                 </div>
                 <div class="timeline-body">
@@ -223,11 +321,47 @@ watch(
         </el-collapse-item>
 
         <!-- 8. Attachments -->
-        <el-collapse-item title="附件" name="attachments" v-if="record.attachments && record.attachments.length > 0">
+        <el-collapse-item name="attachments" v-if="record.attachments && record.attachments.length > 0">
+          <template #title>
+            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+              <span>附件 ({{ record.attachments.length }})</span>
+            </div>
+          </template>
+          <div style="margin-bottom: 10px; text-align: right;">
+            <el-button size="small" type="primary" plain :loading="downloadingAll" @click.stop="downloadAllAttachments">
+              <el-icon v-if="!downloadingAll"><Download /></el-icon>
+              下载全部(ZIP)
+            </el-button>
+          </div>
           <div class="detail-stack">
-            <div v-for="(a, i) in record.attachments" :key="i" class="detail-item detail-full-width">
-              <span class="detail-label">{{ a.fileName || a.originalFileName || '-' }}</span>
-              <span class="detail-value">{{ a.attachmentType || '-' }} · {{ formatFileSize(a.fileSize) }} · <span class="mono" style="font-size: 0.75rem;">{{ truncHash(a.contentHash) }}</span></span>
+            <div v-for="(a, i) in record.attachments" :key="i" class="attachment-item">
+              <!-- Image preview -->
+              <el-image
+                v-if="isImageFile(a.attachmentType) && attachmentPreviewUrls[a.attachmentId]"
+                :src="attachmentPreviewUrls[a.attachmentId]"
+                :preview-src-list="[attachmentPreviewUrls[a.attachmentId]]"
+                style="width: 60px; height: 60px; border-radius: 4px; object-fit: cover; cursor: pointer; flex-shrink: 0;"
+              />
+              <!-- Image loading placeholder -->
+              <div
+                v-else-if="isImageFile(a.attachmentType)"
+                style="width: 60px; height: 60px; border-radius: 4px; background: var(--el-fill-color-light); display: flex; align-items: center; justify-content: center; color: var(--el-text-color-secondary); flex-shrink: 0;"
+              >
+                <el-icon><Loading /></el-icon>
+              </div>
+              <!-- File info -->
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  {{ a.originalFileName || a.fileName || '-' }}
+                </div>
+                <div style="font-size: 0.8rem; color: var(--el-text-color-secondary); margin-top: 0.2rem;">
+                  {{ a.attachmentType || '-' }} · {{ formatFileSize(a.fileSize) }} · <span class="mono" style="font-size: 0.75rem;">{{ truncHash(a.contentHash) }}</span>
+                </div>
+              </div>
+              <!-- Download button -->
+              <el-button size="small" text type="primary" @click="downloadAttachment(a)" style="flex-shrink: 0;">
+                <el-icon><Download /></el-icon>
+              </el-button>
             </div>
           </div>
         </el-collapse-item>
@@ -386,5 +520,16 @@ watch(
   word-break: break-all;
   font-size: 0.75rem;
   line-height: 1.5;
+}
+
+/* ─── Attachment items with image preview ─── */
+.attachment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 </style>

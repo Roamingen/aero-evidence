@@ -229,8 +229,20 @@ async function uploadAttachments(currentAddress, draftId, files) {
     for (const file of files) {
         const attachmentId = crypto.randomUUID();
         const contentHash = await computeFileHash(file.path);
-        const ext = path.extname(file.originalname);
-        const safeName = sanitizeFileName(path.basename(file.originalname, ext));
+
+        // ─── Fix encoding issue with Chinese filenames ───
+        // multer may receive UTF-8 encoded filename but interpret it as Latin-1
+        // We need to convert it back to proper UTF-8
+        let originalFileName = file.originalname;
+        try {
+            originalFileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        } catch (_e) {
+            // If conversion fails, keep the original
+            originalFileName = file.originalname;
+        }
+
+        const ext = path.extname(originalFileName);
+        const safeName = sanitizeFileName(path.basename(originalFileName, ext));
         const finalFileName = `${attachmentId}_${safeName}${ext}`;
         const finalPath = path.join(draftDir, finalFileName);
         const storagePath = `attachments/${draftId}/${finalFileName}`;
@@ -243,7 +255,7 @@ async function uploadAttachments(currentAddress, draftId, files) {
             attachmentId,
             attachmentType,
             fileName: finalFileName,
-            originalFileName: file.originalname,
+            originalFileName: originalFileName,
             mimeType: file.mimetype,
             fileExtension: ext || null,
             fileSize: file.size,
@@ -254,7 +266,7 @@ async function uploadAttachments(currentAddress, draftId, files) {
 
         results.push({
             attachmentId,
-            fileName: file.originalname,
+            fileName: originalFileName,
             mimeType: file.mimetype,
             fileSize: file.size,
             contentHash,
@@ -284,6 +296,18 @@ async function deleteAttachment(currentAddress, draftId, attachmentId) {
     } catch (_err) { /* ignore */ }
 
     await maintenanceStore.deleteAttachmentByDraftAndId(draftId, attachmentId);
+}
+
+async function getAttachmentForPreview(currentAddress, draftId, attachmentId) {
+    const currentUser = await requireCurrentUser(currentAddress);
+    const draft = await ensureDraftOwnership(draftId, currentUser);
+
+    const attachment = await maintenanceStore.getAttachmentByDraftAndId(draftId, attachmentId);
+    if (!attachment) {
+        return null;
+    }
+
+    return attachment;
 }
 
 async function finalizeDraft(currentAddress, draftId) {
@@ -639,6 +663,7 @@ module.exports = {
     deleteDraft,
     uploadAttachments,
     deleteAttachment,
+    getAttachmentForPreview,
     finalizeDraft,
     submitDraft,
 };
