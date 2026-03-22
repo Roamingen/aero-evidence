@@ -98,7 +98,7 @@ function resetWorkspace() {
     <aside class="workspace-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
       <div class="workspace-sidebar-head">
         <div class="workspace-brand">
-          <div class="workspace-brand-mark">AE</div>
+          <img class="workspace-brand-mark" src="/favicon-128x128.png" alt="AE" />
           <div class="workspace-brand-text" :class="{ 'is-hidden': sidebarCollapsed }">
             <div class="workspace-brand-title">Aero Evidence</div>
             <div class="workspace-brand-subtitle">维修记录业务台</div>

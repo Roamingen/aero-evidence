@@ -121,16 +121,11 @@ input {
 }
 
 .workspace-brand-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 3rem;
     height: 3rem;
     border-radius: 0.95rem;
-    background: linear-gradient(145deg, #f4b37a, #ce6f2d);
-    color: #17283f;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    object-fit: contain;
+    flex-shrink: 0;
 }
 
 .workspace-brand-title {
