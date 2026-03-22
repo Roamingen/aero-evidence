@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import * as echarts from 'echarts';
 
 // ============ 数据部分 ============
@@ -282,21 +282,33 @@ async function fetchActivityLog() {
   }
 }
 
-function initializeCharts() {
-  chartsLoading.value = true;
-  setTimeout(() => {
-    drawTrendChart();
-    chartsLoading.value = false;
-  }, 500);
+let _chartInstance = null;
+const _resizeHandler = () => _chartInstance?.resize();
+
+function mountChart() {
+  const chartDom = document.getElementById('trend-chart');
+  if (!chartDom || _chartInstance) return;
+  _chartInstance = echarts.init(chartDom);
+  _chartInstance.setOption(buildChartOption());
+  window.addEventListener('resize', _resizeHandler);
 }
 
-function drawTrendChart() {
-  const chartDom = document.getElementById('trend-chart');
-  if (!chartDom) return;
+function unmountChart() {
+  window.removeEventListener('resize', _resizeHandler);
+  _chartInstance?.dispose();
+  _chartInstance = null;
+}
 
-  const chart = echarts.init(chartDom);
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    unmountChart();
+  } else {
+    mountChart();
+  }
+}
 
-  const option = {
+function buildChartOption() {
+  return {
     responsive: true,
     maintainAspectRatio: true,
     grid: {
@@ -401,8 +413,6 @@ function drawTrendChart() {
     ],
   };
 
-  chart.setOption(option);
-  window.addEventListener('resize', () => chart.resize());
 }
 
 // ============ 生命周期 ============
@@ -410,9 +420,7 @@ function drawTrendChart() {
 onMounted(async () => {
   generateMockBlocks();
   generateMockTransactions();
-  initializeCharts();
 
-  // 调用后端API获取数据
   await Promise.all([
     fetchStatistics(),
     fetchTrendData(),
@@ -422,8 +430,13 @@ onMounted(async () => {
     fetchSystemStats(),
   ]);
 
-  // 初始化图表（使用获取到的数据）
-  drawTrendChart();
+  mountChart();
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  unmountChart();
 });
 </script>
 
