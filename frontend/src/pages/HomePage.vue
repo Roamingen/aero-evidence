@@ -117,7 +117,7 @@ function generateMockRecords() {
       aircraftNo: `B-${Math.random().toString(36).substring(7).toUpperCase()}`,
       status: statuses[Math.floor(Math.random() * statuses.length)],
       submittedBy: `员工${Math.floor(Math.random() * 100)}`,
-      chainTime: new Date(Date.now() - Math.random() * 1000 * 60 * 60 * 24).toLocaleString('zh-CN'),
+      chainTime: new Date(Date.now() - Math.random() * 1000 * 60 * 60 * 24).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
     });
   }
 
@@ -140,7 +140,7 @@ async function fetchBrowserData() {
         aircraftNo: item.title || '-',
         status: item.status || '已上链',
         submittedBy: 'System',
-        chainTime: new Date(item.timestamp).toLocaleString('zh-CN'),
+        chainTime: new Date(item.timestamp).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
       }));
     } else {
       generateMockRecords();
@@ -158,7 +158,7 @@ function generateMockBlocks() {
     const blockNo = 12456 - i;
     blocks.push({
       blockNo,
-      timestamp: new Date(Date.now() - i * 15000).toLocaleString('zh-CN'),
+      timestamp: new Date(Date.now() - i * 15000).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
       transactions: Math.floor(Math.random() * 20) + 5,
       hash: `0x${Math.random().toString(16).substring(2, 18)}...`,
     });
@@ -178,7 +178,7 @@ function generateMockTransactions() {
       type: txTypes[Math.floor(Math.random() * txTypes.length)],
       status: txStatuses[Math.floor(Math.random() * txStatuses.length)],
       confirmations: Math.floor(Math.random() * 20) + 1,
-      timestamp: new Date(Date.now() - Math.random() * 1000 * 60 * 60).toLocaleString('zh-CN'),
+      timestamp: new Date(Date.now() - Math.random() * 1000 * 60 * 60).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
     });
   }
 
@@ -245,7 +245,7 @@ function generateActivityLog() {
       action: actionObj.action,
       employee: employees[Math.floor(Math.random() * employees.length)],
       aircraft: aircrafts[Math.floor(Math.random() * aircrafts.length)],
-      time: time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      time: time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' }),
       recordId: `REC-2026030${Math.floor(Math.random() * 10)}`,
     });
   }

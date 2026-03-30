@@ -405,7 +405,7 @@ onMounted(() => {
 
           <div class="result-item">
             <span class="result-label">有效期至</span>
-            <span class="result-value">{{ new Date(preregisterResult.activationCodeExpiresAt).toLocaleString('zh-CN') }}</span>
+            <span class="result-value">{{ new Date(preregisterResult.activationCodeExpiresAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
           </div>
         </div>
       </transition>
@@ -535,7 +535,7 @@ onMounted(() => {
           <div v-if="selectedUser.address" class="address-item">
             <div class="address-label">当前地址</div>
             <div class="address-value mono">{{ selectedUser.address }}</div>
-            <div class="address-hint">绑定于 {{ new Date(selectedUser.addressBoundAt).toLocaleString('zh-CN') }}</div>
+            <div class="address-hint">绑定于 {{ new Date(selectedUser.addressBoundAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</div>
             <div class="address-actions">
               <el-button size="small" @click="() => { newAddressForm.address = selectedUser.address; modifyingAddress = !modifyingAddress; }">
                 修改地址
@@ -574,7 +574,7 @@ onMounted(() => {
           <div v-if="selectedUser.activationCode" class="activation-code-item">
             <div class="code-label">当前激活码</div>
             <div class="code-value mono">{{ selectedUser.latestActivationCodeFull }}</div>
-            <div class="code-hint">有效期至 {{ new Date(selectedUser.activationCode.expiresAt).toLocaleString('zh-CN') }}</div>
+            <div class="code-hint">有效期至 {{ new Date(selectedUser.activationCode.expiresAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</div>
             <div class="code-actions">
               <el-button size="small" type="primary" @click="regenerateActivationCode(selectedUser.employeeNo)">
                 重新生成

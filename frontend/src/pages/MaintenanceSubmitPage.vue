@@ -731,7 +731,7 @@ onMounted(async () => {
               </template>
             </el-table-column>
             <el-table-column prop="submittedAt" label="提交时间" min-width="140">
-              <template #default="{ row }">{{ row.submittedAt ? new Date(row.submittedAt).toLocaleString('zh-CN') : '-' }}</template>
+              <template #default="{ row }">{{ row.submittedAt ? new Date(row.submittedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-' }}</template>
             </el-table-column>
           </el-table>
           <div v-if="!myRecordsLoading && myRecords.length === 0" class="empty-inline-state" style="margin-top: 0.75rem">
@@ -764,7 +764,7 @@ onMounted(async () => {
               <template #default="{ row }">{{ row.attachmentCount || 0 }}</template>
             </el-table-column>
             <el-table-column prop="updatedAt" label="最后更新" min-width="140">
-              <template #default="{ row }">{{ row.updatedAt ? new Date(row.updatedAt).toLocaleString('zh-CN') : '-' }}</template>
+              <template #default="{ row }">{{ row.updatedAt ? new Date(row.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-' }}</template>
             </el-table-column>
             <el-table-column label="操作" width="120" fixed="right">
               <template #default="{ row }">

@@ -38,7 +38,18 @@ function actionColor(a) { return ACTION_COLORS[a] || ''; }
 
 function formatDateTime(val) {
   if (!val) return '-';
-  return String(val).replace('T', ' ').slice(0, 19);
+  const date = new Date(val);
+  const formatter = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  });
+  return formatter.format(date).replace(/\//g, '-');
 }
 
 function formatFileSize(bytes) {
