@@ -223,7 +223,9 @@ input {
 
 .workspace-nav-menu {
     width: 100%;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
     --el-menu-bg-color: transparent;
     --el-menu-border-color: transparent;
     --el-menu-hover-bg-color: rgba(255, 255, 255, 0.08);
@@ -240,7 +242,7 @@ input {
 }
 
 .workspace-nav-menu :deep(.el-scrollbar__wrap) {
-    margin-right: 0 !important;
+    margin-right: 0;
 }
 
 .workspace-nav-menu :deep(.el-menu-item__title) {
