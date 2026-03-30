@@ -2,9 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { ethers } = require('ethers');
 
-const DEFAULT_LOCAL_RPC_URL = process.env.CHAIN_RPC_URL || 'http://127.0.0.1:18545';
-const DEFAULT_LOCAL_CHAIN_ID = Number(process.env.CHAIN_ID || '31337');
-const DEFAULT_DEPLOYER_PRIVATE_KEY = process.env.CHAIN_PRIVATE_KEY
+const DEFAULT_LOCAL_RPC_URL = process.env.BESU_RPC_URL || process.env.CHAIN_RPC_URL || 'http://127.0.0.1:18545';
+const DEFAULT_LOCAL_CHAIN_ID = Number(process.env.BESU_CHAIN_ID || process.env.CHAIN_ID || '31337');
+const DEFAULT_DEPLOYER_PRIVATE_KEY = process.env.BESU_PRIVATE_KEY || process.env.CHAIN_PRIVATE_KEY
     || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
 function getArtifactPath() {

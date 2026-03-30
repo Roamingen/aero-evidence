@@ -10,7 +10,7 @@ export default defineConfig({
     solidity: {
         version: '0.8.24',
         settings: {
-            evmVersion: 'shanghai',
+            evmVersion: 'paris',
             viaIR: true,
             optimizer: {
                 enabled: true,

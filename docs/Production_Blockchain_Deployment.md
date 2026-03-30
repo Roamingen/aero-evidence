@@ -176,6 +176,85 @@ docker-compose up -d
 
 再次执行本地测试。
 
+## 6.5 部署智能合约到 Besu 节点
+
+> **重要**：这一步在 Besu 节点稳定出块之后、启动后端之前执行。
+
+### 前置条件
+
+- Besu 节点已启动并稳定出块（步骤 4 已验证）
+- 本地项目中 `backend/.env` 已配置 Besu 连接信息
+
+### 环境变量配置
+
+确保 `backend/.env` 中包含以下变量：
+
+```env
+BESU_RPC_URL=http://你的服务器IP:8545
+BESU_CHAIN_ID=1337
+BESU_PRIVATE_KEY=0x8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c692be63
+```
+
+> **注意**：部署脚本 `chain_helpers.js` 会优先读取 `BESU_*` 变量，也兼容 `CHAIN_*` 变量名。
+
+### EVM 版本注意事项
+
+⚠️ **关键**：如果 Besu genesis 只配置了 `londonBlock`/`berlinBlock` 而没有 `shanghaiTime`，合约必须使用 `paris` 或更低的 EVM 版本编译。
+
+`shanghai` EVM 引入了 `PUSH0` 操作码（0x5F），London/Paris 节点不支持，会导致部署时报 `CALL_EXCEPTION`。
+
+确认 `backend/hardhat-local/hardhat.config.ts` 中：
+```typescript
+evmVersion: 'paris',  // 不要用 'shanghai'，除非 Besu genesis 启用了 shanghaiTime
+```
+
+### 编译合约
+
+```bash
+cd backend
+npm run chain:compile
+# 输出：Compiled 1 Solidity file with solc 0.8.24 (evm target: paris)
+```
+
+### 部署合约
+
+```bash
+cd backend
+npm run chain:deploy:v2
+```
+
+成功输出示例：
+```json
+{
+  "contractName": "AviationMaintenanceV2",
+  "address": "0xfeae27388A65eE984F452f86efFEd42AaBD438FD",
+  "chainId": 1337,
+  "rpcUrl": "http://43.167.254.129:8545",
+  "deployer": "0xFE3B557E8Fb62b89F4916B721be55cEb828dBd73",
+  "deployTxHash": "0x72fe3efcab...",
+  "deployedAt": "2026-03-22T04:22:27.656Z"
+}
+```
+
+部署信息会自动保存到 `backend/hardhat-local/deployments/local.json`，后端运行时会从这个文件读取合约地址。
+
+### 验证合约
+
+```bash
+npm run chain:smoke:v2
+```
+
+Smoke test 会测试：提交记录、多阶段签名（技术员→审核员→放行）、状态转换。全部通过则合约部署正确。
+
+### 常见部署失败原因
+
+| 错误 | 原因 | 解决 |
+|------|------|------|
+| `CALL_EXCEPTION` during `estimateGas` | EVM 版本不兼容（shanghai vs london） | 改 hardhat.config.ts 为 `evmVersion: 'paris'`，重新编译 |
+| `未找到合约产物` | 没有编译过 | 先执行 `npm run chain:compile` |
+| 连接超时 | RPC 不通 | 检查防火墙 8545 端口、BESU_RPC_URL 配置 |
+| `insufficient funds` | 部署账户无余额 | 检查 genesis alloc 是否包含部署地址 |
+
 ## 7. 后续扩展
 这套 QBFT 配置天然可扩展到 4 节点，只需把 `nodes.count` 改为 4 并为每个 validator 启动一个 service（不同 data 路径和端口）。
 
@@ -887,17 +966,19 @@ EOF
 使用这个清单确保所有步骤都完成：
 
 - [ ] 1. Besu QBFT 节点启动并稳定出块
-- [ ] 2. MySQL 数据库创建和初始化
-- [ ] 3. 后端环境变量配置正确
-- [ ] 4. 后端 `npm install` 和 `npm start` 成功
-- [ ] 5. 后端 PM2 进程管理配置
-- [ ] 6. 前端构建 (`npm run build`)
-- [ ] 7. Nginx 配置并启动
-- [ ] 8. 防火墙规则配置
-- [ ] 9. SSL 证书配置（生产环境）
-- [ ] 10. 监控脚本部署和定时任务配置
-- [ ] 11. 日志聚合和查看测试
-- [ ] 12. 从本地浏览器访问 https://your-domain 测试
+- [ ] 2. 智能合约编译（evmVersion: paris）并部署到 Besu
+- [ ] 3. Smoke test 验证合约功能
+- [ ] 4. MySQL 数据库创建和初始化
+- [ ] 5. 后端环境变量配置正确（含 BESU_* 变量）
+- [ ] 6. 后端 `npm install` 和 `npm start` 成功
+- [ ] 7. 后端 PM2 进程管理配置
+- [ ] 8. 前端构建 (`npm run build`)
+- [ ] 9. Nginx 配置并启动
+- [ ] 10. 防火墙规则配置
+- [ ] 11. SSL 证书配置（生产环境）
+- [ ] 12. 监控脚本部署和定时任务配置
+- [ ] 13. 日志聚合和查看测试
+- [ ] 14. 从本地浏览器访问 https://your-domain 测试
 
 ---
 
