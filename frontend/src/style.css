@@ -1408,3 +1408,36 @@ input {
         flex-direction: column;
     }
 }
+
+/* ─── Scrollbar: 全局浅色（主界面） ─── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(19, 32, 51, 0.18);
+    border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(19, 32, 51, 0.32);
+}
+
+/* ─── Scrollbar: 侧栏深色覆盖 ─── */
+.workspace-sidebar ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+}
+.workspace-sidebar ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(19, 32, 51, 0.18) transparent;
+}
+.workspace-sidebar * {
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
