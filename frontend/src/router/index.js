@@ -9,6 +9,7 @@ import UserManagementPage from '../pages/UserManagementPage.vue';
 import WorkspaceShellPage from '../pages/WorkspaceShellPage.vue';
 import ApprovalWorkbenchPage from '../pages/ApprovalWorkbenchPage.vue';
 import ImageDetectorPage from '../pages/ImageDetectorPage.vue';
+import VerifyPage from '../pages/VerifyPage.vue';
 import { useAuthSession } from '../stores/authSession';
 
 function hasRoutePermission(auth, route) {
@@ -27,6 +28,11 @@ const router = createRouter({
       path: '/auth',
       name: 'auth',
       component: AuthWorkspacePage,
+    },
+    {
+      path: '/verify',
+      name: 'verify',
+      component: VerifyPage,
     },
     {
       path: '/workspace',

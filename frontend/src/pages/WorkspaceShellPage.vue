@@ -161,7 +161,7 @@ function resetWorkspace() {
         </div>
 
         <div class="workspace-top-actions">
-          <RouterLink to="/auth" class="workspace-auth-link">认证页</RouterLink>
+          <RouterLink to="/verify" class="workspace-auth-link">前往验证页</RouterLink>
           <el-button @click="resetWorkspace">退出工作台</el-button>
         </div>
       </header>
