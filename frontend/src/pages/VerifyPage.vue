@@ -14,6 +14,7 @@ const loading = ref(false);
 const result = ref(null);
 const tamperLoading = ref(false);
 const restoreLoading = ref(false);
+const pdfLoading = ref(false);
 
 const isAdmin = computed(() => {
   try {
@@ -128,6 +129,31 @@ async function handleRestore() {
     ElMessage.error(error.message);
   } finally {
     restoreLoading.value = false;
+  }
+}
+
+async function handleExportPdf() {
+  if (!result.value || !result.value.found) return;
+  pdfLoading.value = true;
+  try {
+    const id = result.value.recordSummary.recordId;
+    const response = await fetch(buildApiUrl(`/api/verify/${id}/pdf`));
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.message || 'PDF 导出失败');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maintenance-report-${id.slice(0, 10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success('PDF 导出成功');
+  } catch (error) {
+    ElMessage.error(error.message || 'PDF 导出失败');
+  } finally {
+    pdfLoading.value = false;
   }
 }
 
@@ -301,6 +327,20 @@ onMounted(() => {
                 </div>
               </el-timeline-item>
             </el-timeline>
+          </div>
+        </transition>
+
+        <!-- Export PDF button -->
+        <transition name="fade">
+          <div v-if="result && result.found" class="verify-section" style="padding-top:1rem;border-top:none;margin-top:0">
+            <el-button
+              type="primary"
+              plain
+              :loading="pdfLoading"
+              @click="handleExportPdf"
+            >
+              ↓ 导出检修报告 PDF
+            </el-button>
           </div>
         </transition>
 

@@ -1,4 +1,7 @@
 const verifyService = require('../services/verifyService');
+const { generateVerifyPdf } = require('../services/pdfService');
+
+const FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || 'http://127.0.0.1:5173';
 
 async function verifyRecord(req, res, next) {
     try {
@@ -27,4 +30,21 @@ async function restoreTamper(req, res, next) {
     }
 }
 
-module.exports = { verifyRecord, tamperRecord, restoreTamper };
+async function exportPdf(req, res, next) {
+    try {
+        const result = await verifyService.verifyRecord(req.params.recordId);
+        if (!result.found) {
+            return res.status(404).json({ message: result.message || '记录不存在' });
+        }
+        const verifyUrl = `${FRONTEND_BASE_URL}/verify?recordId=${req.params.recordId}`;
+        const pdfBuf = await generateVerifyPdf(result, verifyUrl);
+        const filename = `maintenance-report-${req.params.recordId.slice(0, 10)}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuf);
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = { verifyRecord, tamperRecord, restoreTamper, exportPdf };

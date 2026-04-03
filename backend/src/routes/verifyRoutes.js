@@ -5,6 +5,7 @@ const verifyController = require('../controllers/verifyController');
 const router = express.Router();
 
 // Public - no auth required
+router.get('/:recordId/pdf', verifyController.exportPdf);
 router.get('/:recordId', verifyController.verifyRecord);
 
 // Admin only - requires auth
