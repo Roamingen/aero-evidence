@@ -5,15 +5,14 @@ const fs = require('fs');
 
 const FONT_PATH = (() => {
     const candidates = [
-        // Linux - 文泉驿
-        '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
-        '/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc',
-        // Linux - Noto
-        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        // Linux - 手动下载的单体 TTF/OTF（pdfkit 兼容）
+        '/usr/share/fonts/NotoSansSC-Regular.ttf',
+        '/usr/share/fonts/NotoSansSC-Regular.otf',
+        // Linux - Noto CJK OTF 单体
+        '/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf',
         '/usr/share/fonts/noto-cjk/NotoSansCJKsc-Regular.otf',
         // Windows
         'C:\\Windows\\Fonts\\simhei.ttf',
-        'C:\\Windows\\Fonts\\msyh.ttc',
     ];
     const fs = require('fs');
     return candidates.find((p) => fs.existsSync(p)) || null;
