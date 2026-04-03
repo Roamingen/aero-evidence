@@ -3,7 +3,21 @@ const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 
-const FONT_PATH = 'C:\\Windows\\Fonts\\simhei.ttf';
+const FONT_PATH = (() => {
+    const candidates = [
+        // Linux - 文泉驿
+        '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+        '/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc',
+        // Linux - Noto
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/noto-cjk/NotoSansCJKsc-Regular.otf',
+        // Windows
+        'C:\\Windows\\Fonts\\simhei.ttf',
+        'C:\\Windows\\Fonts\\msyh.ttc',
+    ];
+    const fs = require('fs');
+    return candidates.find((p) => fs.existsSync(p)) || null;
+})();
 
 const STATUS_LABELS = {
     draft: '草稿', submitted: '待审核', peer_checked: '已复核',
