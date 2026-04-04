@@ -209,7 +209,8 @@ function handleCardClick(tab) {
 </script>
 
 <template>
-  <div v-if="!canLoad" class="result-block">
+  <div>
+    <div v-if="!canLoad" class="result-block">
     <el-alert type="warning" :closable="false" title="请先登录后再进入签名工作台" description="当前页面需要登录并持有签名权限。" />
     <div class="button-row top-gap">
       <RouterLink to="/auth" class="workspace-auth-link">前往认证页</RouterLink>
@@ -373,6 +374,7 @@ function handleCardClick(tab) {
     </section>
 
     <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" />
+  </div>
   </div>
 </template>
 

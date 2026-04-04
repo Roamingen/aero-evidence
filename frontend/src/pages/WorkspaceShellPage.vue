@@ -177,7 +177,11 @@ async function resetWorkspace() {
       </header>
 
       <main class="workspace-content">
-        <RouterView />
+        <RouterView v-slot="{ Component, route: r }">
+          <Transition name="page-rise">
+            <component :is="Component" :key="r.path" />
+          </Transition>
+        </RouterView>
       </main>
     </div>
   </div>

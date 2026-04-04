@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElLoading } from 'element-plus';
 
 import AuthWorkspacePage from '../pages/AuthWorkspacePage.vue';
 import HomePage from '../pages/HomePage.vue';
@@ -103,9 +103,19 @@ const router = createRouter({
   ],
 });
 
+let loadingInstance = null;
+
 router.beforeEach((to) => {
   const auth = useAuthSession();
   const requiresAuth = to.matched.some((record) => record.meta?.requiresAuth);
+
+  if (requiresAuth) {
+    loadingInstance = ElLoading.service({
+      target: '.workspace-content',
+      background: 'rgba(247, 249, 252, 0.6)',
+      text: '',
+    });
+  }
 
   if (!requiresAuth) {
     return true;
@@ -129,6 +139,13 @@ router.beforeEach((to) => {
   }
 
   return true;
+});
+
+router.afterEach(() => {
+  setTimeout(() => {
+    loadingInstance?.close();
+    loadingInstance = null;
+  }, 300);
 });
 
 export default router;

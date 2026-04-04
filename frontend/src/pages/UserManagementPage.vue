@@ -363,7 +363,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="!canLoad" class="result-block">
+  <div>
+    <div v-if="!canLoad" class="result-block">
     <el-alert
       type="warning"
       :closable="false"
@@ -375,7 +376,7 @@ onMounted(() => {
     </div>
   </div>
 
-  <div v-else class="module-stack" v-loading="loading">
+  <div v-else class="module-stack">
     <!-- 统计卡片 -->
     <section class="module-grid card-grid-three">
       <article class="module-panel primary-summary-card">
@@ -493,7 +494,7 @@ onMounted(() => {
         </el-select>
       </div>
 
-      <div class="records-table-shell compact-table-shell">
+      <div class="records-table-shell compact-table-shell" v-loading="loading">
         <div class="records-table-row records-table-head compact-head">
           <span>工号</span>
           <span>姓名</span>
@@ -714,6 +715,7 @@ onMounted(() => {
       </section>
     </div>
   </el-drawer>
+  </div>
 </template>
 
 <style scoped>

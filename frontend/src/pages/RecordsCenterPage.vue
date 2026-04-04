@@ -119,7 +119,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="!canLoad" class="result-block">
+  <div>
+    <div v-if="!canLoad" class="result-block">
     <el-alert
       type="warning"
       :closable="false"
@@ -204,5 +205,6 @@ onMounted(() => {
     </section>
 
     <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" />
+  </div>
   </div>
 </template>
