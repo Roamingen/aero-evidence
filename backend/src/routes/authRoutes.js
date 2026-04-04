@@ -13,7 +13,7 @@ router.post('/verify', authController.verifySignature);
 router.get('/me', authMiddleware, authController.getMe);
 router.get('/users', authMiddleware, authController.listUsers);
 router.get('/roles', authMiddleware, authController.listRoles);
-router.patch('/users/:employeeNo', authMiddleware, authController.updateUser);
+router.delete('/users/:employeeNo', authMiddleware, authController.deleteUser);
 router.get('/activation-codes', authMiddleware, authController.listActivationCodes);
 router.post('/activation-codes/:employeeNo/regenerate', authMiddleware, authController.regenerateActivationCode);
 router.post('/activation-codes/:employeeNo/revoke', authMiddleware, authController.revokeActivationCode);

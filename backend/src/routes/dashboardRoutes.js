@@ -26,4 +26,7 @@ router.get('/system-stats', dashboardController.getSystemStats);
 // 获取浏览器数据
 router.get('/browser', dashboardController.getBrowser);
 
+// 获取真实链上区块和交易
+router.get('/chain-browser', dashboardController.getChainBrowser);
+
 module.exports = router;

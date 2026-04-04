@@ -764,7 +764,35 @@ async function deleteUserPermissionOverride(address, employeeNo, permissionCode)
     };
 }
 
+async function deleteUser(address, employeeNo) {
+    const currentUser = await getCurrentUser(address);
+    assertUserHasAnyPermission(currentUser, 'user.manage', '当前用户无权删除用户');
+
+    const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+    if (normalizedEmployeeNo === currentUser.employeeNo) {
+        const error = new Error('不能删除自己的账户');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const user = await userStore.findByEmployeeNo(normalizedEmployeeNo);
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    // 软删除：状态改为 revoked + 清除地址绑定
+    await userStore.updateUserAdmin(normalizedEmployeeNo, { status: 'revoked' }, currentUser.id);
+    if (user.address) {
+        await userStore.clearUserAddress(user.id);
+    }
+
+    return { message: `用户 ${normalizedEmployeeNo} 已删除` };
+}
+
 module.exports = {
+    deleteUser,
     preregisterUser,
     issueActivationChallenge,
     activateUser,

@@ -203,7 +203,17 @@ async function deleteUserPermissionOverride(req, res, next) {
     }
 }
 
+async function deleteUser(req, res, next) {
+    try {
+        const result = await authService.deleteUser(req.auth.address, req.params.employeeNo);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
+    deleteUser,
     preregisterUser,
     issueActivationChallenge,
     activateUser,

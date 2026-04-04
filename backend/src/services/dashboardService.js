@@ -203,14 +203,18 @@ async function getSystemStats() {
     );
     const recordsThisMonth = monthRows[0]?.count || 0;
 
-    // 上链确认率（已上链的记录 / 总记录数）
+    // 链上确认率：已提交记录中已上链的比例（排除草稿/finalized）
     const [chainRows] = await getPool().execute(
         `SELECT COUNT(*) as count FROM maintenance_records WHERE chain_record_id IS NOT NULL`
     );
-    const chainConfirmedCount = chainRows[0]?.count || 0;
-    const chainConfirmationRate = totalRecords > 0
-        ? ((chainConfirmedCount / totalRecords) * 100).toFixed(1)
-        : 0;
+    const chainConfirmedCount = Number(chainRows[0]?.count || 0);
+    const [submittedRows] = await getPool().execute(
+        `SELECT COUNT(*) as count FROM maintenance_records WHERE status NOT IN ('draft', 'finalized')`
+    );
+    const submittedCount = Number(submittedRows[0]?.count || 0);
+    const chainConfirmationRate = submittedCount > 0
+        ? ((chainConfirmedCount / submittedCount) * 100).toFixed(1)
+        : 100;
 
     // 平均批准时间（从提交到放行的平均时间）
     const [timeRows] = await getPool().execute(
@@ -262,6 +266,54 @@ async function getBrowserData() {
     return records;
 }
 
+/**
+ * 获取最新区块和交易数据（真实链上数据）
+ */
+async function getChainBrowserData() {
+    try {
+        const provider = createProvider();
+        const latestBlockNumber = await provider.getBlockNumber();
+
+        // 获取最新 5 个区块
+        const blockNumbers = Array.from({ length: 5 }, (_, i) => latestBlockNumber - i).filter(n => n >= 0);
+        const blocks = await Promise.all(blockNumbers.map(async (n) => {
+            const block = await provider.getBlock(n);
+            return block ? {
+                blockNo: block.number,
+                hash: block.hash ? block.hash.slice(0, 10) + '...' + block.hash.slice(-6) : '-',
+                transactions: block.transactions?.length ?? 0,
+                timestamp: new Date(Number(block.timestamp) * 1000).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+            } : null;
+        }));
+
+        // 获取最新交易：从 DB 取最近的 chain_tx_hash
+        const [txRows] = await getPool().execute(
+            `SELECT chain_tx_hash, status, submitted_at, aircraft_reg_no
+             FROM maintenance_records
+             WHERE chain_tx_hash IS NOT NULL
+             ORDER BY submitted_at DESC LIMIT 5`
+        );
+        const transactions = txRows.map(row => ({
+            hash: row.chain_tx_hash
+                ? row.chain_tx_hash.slice(0, 10) + '...' + row.chain_tx_hash.slice(-6)
+                : '-',
+            fullHash: row.chain_tx_hash,
+            type: 'MaintenanceRecord',
+            status: '已确认',
+            aircraftNo: row.aircraft_reg_no || '-',
+            timestamp: new Date(row.submitted_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+        }));
+
+        return {
+            blocks: blocks.filter(Boolean),
+            transactions,
+        };
+    } catch (error) {
+        console.error('Failed to get chain browser data:', error.message);
+        return { blocks: [], transactions: [] };
+    }
+}
+
 module.exports = {
     getBlockchainStatistics,
     getTrendData,
@@ -269,4 +321,5 @@ module.exports = {
     getUserStats,
     getSystemStats,
     getBrowserData,
+    getChainBrowserData,
 };

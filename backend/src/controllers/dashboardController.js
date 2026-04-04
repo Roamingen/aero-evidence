@@ -84,6 +84,15 @@ async function getBrowser(req, res, next) {
     }
 }
 
+async function getChainBrowser(req, res, next) {
+    try {
+        const data = await dashboardService.getChainBrowserData();
+        res.status(200).json(data);
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     getStatistics,
     getTrend,
@@ -91,4 +100,5 @@ module.exports = {
     getUserStats,
     getSystemStats,
     getBrowser,
+    getChainBrowser,
 };

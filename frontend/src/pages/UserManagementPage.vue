@@ -12,6 +12,7 @@ const loading = ref(false);
 const savingUser = ref(false);
 const savingPreregister = ref(false);
 const savingAddress = ref(false);
+const deletingUser = ref(false);
 const detailDrawerVisible = ref(false);
 const selectedUser = ref(null);
 const preregisterResult = ref(null);
@@ -39,6 +40,20 @@ const userForm = reactive({
   department: '',
   status: 'active',
   roleCodes: [],
+});
+
+const searchKeyword = ref('');
+const filterStatus = ref('');
+
+const filteredUsers = computed(() => {
+  return users.value.filter((u) => {
+    if (filterStatus.value && u.status !== filterStatus.value) return false;
+    if (!searchKeyword.value) return true;
+    const kw = searchKeyword.value.toLowerCase();
+    return [
+      u.employeeNo, u.name, u.department, ...(u.roles || [])
+    ].some((v) => String(v || '').toLowerCase().includes(kw));
+  });
 });
 
 const canLoad = computed(() => auth.isLoggedIn.value && auth.loginResult.value?.token);
@@ -242,12 +257,15 @@ async function modifyUserAddress(employeeNo) {
   }
 }
 
-async function deleteUserPermissionOverride(employeeNo) {
+async function deleteUserPermissionOverride(employeeNo, permissionCode) {
   try {
     await authorizedJsonRequest(
       auth.loginResult.value.token,
       `/api/auth/users/${employeeNo}/permissions/override`,
-      { method: 'DELETE' },
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ permissionCode }),
+      },
     );
     ElMessage.success('权限配置已删除');
     if (selectedUser.value && selectedUser.value.employeeNo === employeeNo) {
@@ -299,6 +317,46 @@ async function resetUserToPending(employeeNo) {
   }
 }
 
+async function deleteUser(employeeNo) {
+  try {
+    deletingUser.value = true;
+    await authorizedJsonRequest(
+      auth.loginResult.value.token,
+      `/api/auth/users/${employeeNo}`,
+      { method: 'DELETE' },
+    );
+    ElMessage.success('用户已删除');
+    detailDrawerVisible.value = false;
+    await fetchAdminData();
+  } catch (error) {
+    ElMessage.error(error.message || '删除用户失败');
+  } finally {
+    deletingUser.value = false;
+  }
+}
+
+const overrideForm = reactive({ permissionCode: '', effect: 'allow' });
+const savingOverride = ref(false);
+
+async function addPermissionOverride() {
+  if (!overrideForm.permissionCode) {
+    ElMessage.warning('请选择权限');
+    return;
+  }
+  try {
+    savingOverride.value = true;
+    await setUserPermissionOverride(
+      selectedUser.value.employeeNo,
+      overrideForm.permissionCode,
+      overrideForm.effect
+    );
+    overrideForm.permissionCode = '';
+    overrideForm.effect = 'allow';
+  } finally {
+    savingOverride.value = false;
+  }
+}
+
 onMounted(() => {
   fetchAdminData();
 });
@@ -320,7 +378,7 @@ onMounted(() => {
   <div v-else class="module-stack" v-loading="loading">
     <!-- 统计卡片 -->
     <section class="module-grid card-grid-three">
-      <article class="module-panel member-card">
+      <article class="module-panel primary-summary-card">
         <div class="module-title">人员总数</div>
         <div class="member-card-count">{{ users.length }}</div>
         <div class="module-subtitle">已激活的用户数量</div>
@@ -420,6 +478,21 @@ onMounted(() => {
         </div>
       </div>
 
+      <div class="user-filter-row">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索工号、姓名、部门、角色"
+          clearable
+          style="flex: 1"
+        />
+        <el-select v-model="filterStatus" placeholder="全部状态" clearable style="width: 160px">
+          <el-option label="已激活" value="active" />
+          <el-option label="待激活" value="pending_activation" />
+          <el-option label="已禁用" value="disabled" />
+          <el-option label="已注销" value="revoked" />
+        </el-select>
+      </div>
+
       <div class="records-table-shell compact-table-shell">
         <div class="records-table-row records-table-head compact-head">
           <span>工号</span>
@@ -430,7 +503,7 @@ onMounted(() => {
         </div>
 
         <button
-          v-for="row in users"
+          v-for="row in filteredUsers"
           :key="row.employeeNo"
           class="records-table-row compact-head row-button"
           @click="fillUserForm(row)"
@@ -481,7 +554,7 @@ onMounted(() => {
             </el-select>
           </el-form-item>
 
-          <el-form-item label="权限">
+          <el-form-item label="权限覆盖">
             <div v-if="userPermissions" class="permissions-list">
               <div class="permission-row">
                 <span class="permission-label">角色权限：</span>
@@ -492,34 +565,50 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div v-if="userPermissions.permissionOverrides && userPermissions.permissionOverrides.length > 0" class="override-row">
-                <span class="permission-label">权限覆盖：</span>
-                <div class="override-list">
+              <div class="override-row">
+                <span class="permission-label">单独权限覆盖：</span>
+                <div v-if="userPermissions.permissionOverrides && userPermissions.permissionOverrides.length > 0" class="override-list">
                   <div v-for="override in userPermissions.permissionOverrides" :key="override.id" class="override-item">
                     <span class="override-code">{{ override.permissionCode }}</span>
                     <el-tag :type="override.effect === 'allow' ? 'success' : 'danger'" size="small">
                       {{ override.effect === 'allow' ? '允许' : '拒绝' }}
                     </el-tag>
-                    <el-button size="small" text type="danger" @click="deleteUserPermissionOverride(selectedUser.employeeNo)">
-                      删除
-                    </el-button>
+                    <el-button
+                      size="small" text type="danger"
+                      @click="deleteUserPermissionOverride(selectedUser.employeeNo, override.permissionCode)"
+                    >删除</el-button>
                   </div>
                 </div>
-              </div>
+                <div v-else class="override-empty">暂无单独覆盖配置</div>
 
-              <div class="add-override">
-                <el-select placeholder="选择权限添加覆盖" size="small" style="width: 200px;">
-                  <el-option v-for="perm in permissions" :key="perm.code" :label="`${perm.name} (${perm.code})`" :value="perm.code" />
-                </el-select>
-                <el-select placeholder="选择效果" size="small" style="width: 100px; margin-left: 0.5rem;">
-                  <el-option label="允许" value="allow" />
-                  <el-option label="拒绝" value="deny" />
-                </el-select>
+                <div class="add-override">
+                  <el-select
+                    v-model="overrideForm.permissionCode"
+                    placeholder="选择权限"
+                    size="small"
+                    filterable
+                    style="flex: 1"
+                  >
+                    <el-option
+                      v-for="perm in permissions"
+                      :key="perm.code"
+                      :label="`${perm.name} (${perm.code})`"
+                      :value="perm.code"
+                    />
+                  </el-select>
+                  <el-select v-model="overrideForm.effect" size="small" style="width: 90px">
+                    <el-option label="允许" value="allow" />
+                    <el-option label="拒绝" value="deny" />
+                  </el-select>
+                  <el-button
+                    size="small" type="primary"
+                    :loading="savingOverride"
+                    @click="addPermissionOverride"
+                  >添加</el-button>
+                </div>
               </div>
             </div>
-            <div v-else class="empty-state">
-              <p>加载权限中...</p>
-            </div>
+            <div v-else class="empty-state">加载权限中...</div>
           </el-form-item>
 
           <div class="button-row">
@@ -605,11 +694,35 @@ onMounted(() => {
           </div>
         </div>
       </section>
+      <!-- 删除用户 -->
+      <section class="module-panel">
+        <div class="module-title">删除用户</div>
+        <div class="reset-section" style="border-color: rgba(220,38,38,0.2); background: rgba(220,38,38,0.03);">
+          <p class="reset-hint">将用户标记为已注销并清除地址绑定，用户将从人员列表中移除且无法登录。历史签名记录仍会保留。</p>
+          <el-popconfirm
+            title="确定要删除该用户吗？用户将从列表移除且无法登录，历史记录保留。"
+            confirm-button-text="确定删除"
+            cancel-button-text="取消"
+            confirm-button-type="danger"
+            @confirm="deleteUser(selectedUser.employeeNo)"
+          >
+            <template #reference>
+              <el-button type="danger" :loading="deletingUser">删除用户</el-button>
+            </template>
+          </el-popconfirm>
+        </div>
+      </section>
     </div>
   </el-drawer>
 </template>
 
 <style scoped>
+.user-filter-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
 .preregister-form {
   margin-top: 1rem;
 }
@@ -852,10 +965,18 @@ onMounted(() => {
   flex: 1;
 }
 
+.override-empty {
+  font-size: 0.82rem;
+  color: #999;
+  padding: 0.25rem 0;
+  margin-bottom: 0.5rem;
+}
+
 .add-override {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  margin-top: 0.75rem;
 }
 
 .reset-section {
