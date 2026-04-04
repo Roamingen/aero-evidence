@@ -673,7 +673,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="!auth.isLoggedIn.value" class="result-block">
+  <div>
+    <div v-if="!auth.isLoggedIn.value" class="result-block">
     <el-alert
       type="warning"
       :closable="false"
@@ -1322,6 +1323,7 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
+  </div>
   </div>
 </template>
 

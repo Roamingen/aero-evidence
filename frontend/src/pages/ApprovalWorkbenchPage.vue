@@ -373,7 +373,7 @@ function handleCardClick(tab) {
       </el-tabs>
     </section>
 
-    <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" />
+    <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" :append-to-body="false" />
   </div>
   </div>
 </template>

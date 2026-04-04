@@ -198,7 +198,7 @@ watch(
 </script>
 
 <template>
-  <el-drawer v-model="internalVisible" title="检修记录详情" size="48%" :destroy-on-close="false" direction="rtl">
+  <el-drawer v-model="internalVisible" title="检修记录详情" size="48%" :destroy-on-close="false" direction="rtl" :append-to-body="false">
     <div v-loading="loading" class="drawer-body">
       <div v-if="!record && !loading" class="module-empty-state">未加载到记录数据。</div>
 

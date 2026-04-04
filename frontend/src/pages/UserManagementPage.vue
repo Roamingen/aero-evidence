@@ -520,7 +520,7 @@ onMounted(() => {
   </div>
 
   <!-- 用户详情抽屉 -->
-  <el-drawer v-model="detailDrawerVisible" size="40%" title="用户详情">
+  <el-drawer v-model="detailDrawerVisible" size="40%" title="用户详情" :append-to-body="false">
     <div v-if="selectedUser" class="module-stack">
       <!-- 基础信息 -->
       <section class="module-panel">
