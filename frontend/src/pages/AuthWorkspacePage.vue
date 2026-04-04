@@ -32,8 +32,8 @@ async function handleRegisterAndLogin() {
       <div class="auth-card">
         <!-- 卡片头部 -->
         <div class="auth-header">
-          <h1 class="auth-title">飞机检修系统</h1>
-          <p class="auth-subtitle">Aviation Maintenance System</p>
+          <h1 class="auth-title">Aero Evidence</h1>
+          <p class="auth-subtitle">民航检修记录存证系统</p>
         </div>
 
         <!-- Tab 标签 -->
@@ -51,7 +51,7 @@ async function handleRegisterAndLogin() {
         <!-- 内容区域 -->
         <div class="tab-content">
           <!-- 登录表单 -->
-          <div v-show="auth.activeAuthTab.value === 'login'" class="form-panel">
+          <div class="form-panel" :class="{ 'panel-hidden': auth.activeAuthTab.value !== 'login' }">
             <el-form label-position="top" class="auth-form">
               <div class="metamask-hint">
                 点击下方按钮连接 MetaMask 钱包，系统将使用您的钱包地址进行身份验证。
@@ -105,7 +105,7 @@ async function handleRegisterAndLogin() {
           </div>
 
           <!-- 注册表单 -->
-          <div v-show="auth.activeAuthTab.value === 'register'" class="form-panel">
+            <div class="form-panel" :class="{ 'panel-hidden': auth.activeAuthTab.value !== 'register' }">
             <el-form label-position="top" class="auth-form">
               <div class="form-row">
                 <div class="form-col">
@@ -161,14 +161,43 @@ async function handleRegisterAndLogin() {
                 </div>
               </div>
             </transition>
-          </div>
+            </div>
         </div>
+      </div>
+
+      <div class="auth-footer-link">
+        <RouterLink to="/verify" class="auth-verify-link">🔍 公开验证门户</RouterLink>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.auth-footer-link {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.auth-verify-link {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #607087;
+  text-decoration: none;
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(16, 36, 59, 0.15);
+  backdrop-filter: blur(6px);
+  transition: all 0.2s ease;
+}
+
+.auth-verify-link:hover {
+  color: #10243b;
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(16, 36, 59, 0.3);
+  box-shadow: 0 2px 8px rgba(16, 36, 59, 0.1);
+}
 * {
   margin: 0;
   padding: 0;
@@ -185,23 +214,11 @@ async function handleRegisterAndLogin() {
   align-items: center;
   justify-content: center;
   background:
-    repeating-linear-gradient(
-      0deg,
-      rgba(16, 36, 59, 0.03) 0px,
-      rgba(16, 36, 59, 0.03) 1px,
-      transparent 1px,
-      transparent 40px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(16, 36, 59, 0.03) 0px,
-      rgba(16, 36, 59, 0.03) 1px,
-      transparent 1px,
-      transparent 40px
-    ),
+    radial-gradient(circle, rgba(16, 36, 59, 0.15) 1px, transparent 1px),
     radial-gradient(circle at top left, rgba(95, 160, 255, 0.35), transparent 35%),
     radial-gradient(circle at bottom right, rgba(255, 156, 102, 0.3), transparent 35%),
     linear-gradient(140deg, #f0f6fb 0%, #f8fafc 45%, #fffaf5 100%);
+  background-size: 40px 40px, 100% 100%, 100% 100%, 100% 100%;
   overflow: hidden;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   z-index: 1000;
@@ -288,7 +305,6 @@ async function handleRegisterAndLogin() {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  overflow: hidden;
 }
 
 /* 卡片头部 */
@@ -374,11 +390,25 @@ async function handleRegisterAndLogin() {
 /* 内容区域 */
 .tab-content {
   padding: 32px;
-  min-height: 300px;
+  position: relative;
 }
 
 .form-panel {
-  animation: fadeIn 0.5s ease-out;
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.35s ease, opacity 0.35s ease;
+  opacity: 1;
+}
+
+.panel-hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.form-panel > * {
+  min-height: 0;
 }
 
 .auth-form {

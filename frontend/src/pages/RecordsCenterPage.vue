@@ -136,7 +136,7 @@ onMounted(() => {
       <div class="module-header-row">
         <div>
           <div class="module-title">查阅中心</div>
-          <div class="module-subtitle">记录列表、状态筛选和详情抽屉都已经接到真实后端接口。</div>
+          <div class="module-subtitle">检修记录列表、状态筛选与详情查看</div>
         </div>
         <div class="filter-pills">
           <button
@@ -190,9 +190,17 @@ onMounted(() => {
       </div>
     </section>
 
-    <section class="module-panel accent-panel">
-      <div class="module-title">分页结果</div>
-      <div class="module-subtitle">当前第 {{ pagination.page }} 页，共 {{ pagination.total }} 条记录。后续可继续接服务器端分页组件。</div>
+    <section class="module-panel">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        :page-sizes="[8, 20, 50]"
+        layout="total, sizes, prev, pager, next"
+        background
+        @current-change="fetchRecords"
+        @size-change="() => { pagination.page = 1; fetchRecords(); }"
+      />
     </section>
 
     <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" />

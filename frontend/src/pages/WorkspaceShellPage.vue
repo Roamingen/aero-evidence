@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
+import { ElMessageBox } from 'element-plus';
 import { CircleCheck, DocumentAdd, Document, User, Expand, Fold, Picture, HomeFilled } from '@element-plus/icons-vue';
 import { useAuthSession } from '../stores/authSession';
 
@@ -87,9 +88,18 @@ function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
 }
 
-function resetWorkspace() {
-  auth.resetAuthSession();
-  router.push('/auth');
+async function resetWorkspace() {
+  try {
+    await ElMessageBox.confirm('确定要退出工作台吗？', '退出确认', {
+      confirmButtonText: '退出',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+    auth.resetAuthSession();
+    router.push('/auth');
+  } catch {
+    // 用户取消
+  }
 }
 </script>
 
