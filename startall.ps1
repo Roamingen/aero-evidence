@@ -238,6 +238,7 @@ if (-not $DryRun) {
     Wait-JsonRpcReady
 }
 
+Run-BackendCommand -Command 'chain:compile'
 Run-BackendCommand -Command 'chain:deploy:v2'
 Run-BackendCommand -Command 'db:sync:role-permissions'
 Run-BackendCommand -Command 'db:seed:demo-records'
