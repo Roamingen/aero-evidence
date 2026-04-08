@@ -8,46 +8,51 @@ import { buildApiUrl } from '../utils/apiBase';
 const auth = useAuthSession();
 const uploadRef = ref(null);
 const fileList = ref([]);
+const analyzing = ref(false);
 const results = ref([]);
-const detecting = ref(false);
 
 const handleFileChange = (file, files) => {
   fileList.value = files;
+  results.value = [];
 };
 
-const detectImages = async () => {
+const analyzeImages = async () => {
   if (fileList.value.length === 0) {
     ElMessage.warning('请先选择图片');
     return;
   }
 
-  detecting.value = true;
-  const formData = new FormData();
-  fileList.value.forEach(file => {
-    formData.append('files', file.raw);
-  });
+  analyzing.value = true;
+  results.value = fileList.value.map(f => ({
+    filename: f.name,
+    preview: f.url || '',
+    status: 'loading',
+    analysis: null,
+    aiVerdict: null,
+    yoloResult: null,
+    error: null,
+  }));
 
-  try {
-    const response = await fetch(buildApiUrl('/api/image-detection/detect/batch'), {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${auth.loginResult.value?.token}` },
-      body: formData,
-    });
-
-    if (!response.ok) throw new Error('检测请求失败');
-
-    const data = await response.json();
-    results.value = data.results.map((result, index) => ({
-      ...result,
-      preview: fileList.value[index]?.url || '',
-    }));
-
-    ElMessage.success('检测完成');
-  } catch (error) {
-    ElMessage.error(error.message || '检测失败');
-  } finally {
-    detecting.value = false;
+  for (let i = 0; i < fileList.value.length; i++) {
+    const file = fileList.value[i];
+    const formData = new FormData();
+    formData.append('file', file.raw);
+    try {
+      const response = await fetch(buildApiUrl('/api/image-detection/analyze-full'), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${auth.loginResult.value?.token}` },
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'AI 分析失败');
+      results.value[i] = { ...results.value[i], status: 'done', analysis: data.analysis, aiVerdict: data.aiVerdict, yoloResult: data.yoloResult };
+    } catch (error) {
+      results.value[i] = { ...results.value[i], status: 'error', error: error.message };
+    }
   }
+
+  analyzing.value = false;
+  ElMessage.success('全部分析完成');
 };
 
 const clearAll = () => {
@@ -55,10 +60,6 @@ const clearAll = () => {
   results.value = [];
   uploadRef.value?.clearFiles();
 };
-
-const normalCount = () => results.value.filter(r => !r.error && r.is_normal).length;
-const abnormalCount = () => results.value.filter(r => !r.error && !r.is_normal).length;
-const errorCount = () => results.value.filter(r => r.error).length;
 </script>
 
 <template>
@@ -67,8 +68,8 @@ const errorCount = () => results.value.filter(r => r.error).length;
     <section class="module-panel">
       <div class="module-header-row">
         <div>
-          <div class="detector-page-title">图像上传</div>
-          <div class="module-subtitle">支持 JPG、PNG、BMP、WebP、TIFF 格式，单次最多 20 张。</div>
+          <div class="detector-page-title">AI 图像检修分析</div>
+          <div class="module-subtitle">上传飞机部件或机身照片，AI 将自动识别故障并给出检修建议。支持 JPG、PNG、BMP、WebP，单次最多 20 张。</div>
         </div>
         <div class="filter-pills">
           <span class="filter-pill">已选 {{ fileList.length }} 张</span>
@@ -82,7 +83,7 @@ const errorCount = () => results.value.filter(r => r.error).length;
           :on-change="handleFileChange"
           :file-list="fileList"
           list-type="picture-card"
-          accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.tiff,.tif"
+          accept=".jpg,.jpeg,.png,.bmp,.webp"
           multiple
           :limit="20"
           class="detector-upload"
@@ -95,88 +96,67 @@ const errorCount = () => results.value.filter(r => r.error).length;
         <el-button
           type="primary"
           size="large"
-          :loading="detecting"
+          :loading="analyzing"
           :disabled="fileList.length === 0"
-          @click="detectImages"
+          @click="analyzeImages"
         >
-          {{ detecting ? '检测中…' : '开始检测' }}
+          {{ analyzing ? 'AI 分析中…' : '开始 AI 分析' }}
         </el-button>
         <el-button size="large" :disabled="fileList.length === 0" @click="clearAll">清空</el-button>
       </div>
     </section>
 
-    <template v-if="results.length > 0">
-      <section class="module-grid card-grid-three">
-        <article class="module-panel member-card">
-          <div class="module-title">正常</div>
-          <div class="member-card-count" style="color: var(--color-success, #67c23a)">{{ normalCount() }}</div>
-          <div class="module-subtitle">未检测到异常</div>
-        </article>
-        <article class="module-panel member-card">
-          <div class="module-title">异常</div>
-          <div class="member-card-count" style="color: var(--color-danger, #f56c6c)">{{ abnormalCount() }}</div>
-          <div class="module-subtitle">检测到潜在损伤</div>
-        </article>
-        <article class="module-panel member-card">
-          <div class="module-title">失败</div>
-          <div class="member-card-count">{{ errorCount() }}</div>
-          <div class="module-subtitle">无法完成检测</div>
-        </article>
-      </section>
-
-      <section class="module-panel">
-        <div class="module-header-row">
-          <div>
-            <div class="module-title">检测结果</div>
-            <div class="module-subtitle">共 {{ results.length }} 张，点击图片可放大查看。</div>
-          </div>
-          <div class="filter-pills">
-            <span class="filter-pill is-active">全部 {{ results.length }}</span>
-            <span class="filter-pill" style="color: var(--color-success, #67c23a)">正常 {{ normalCount() }}</span>
-            <span class="filter-pill" style="color: var(--color-danger, #f56c6c)">异常 {{ abnormalCount() }}</span>
-          </div>
+    <section v-for="(result, index) in results" :key="index" class="module-panel result-panel">
+      <div class="result-layout">
+        <!-- 左：图片预览 -->
+        <div class="result-preview-col">
+          <el-image
+            v-if="result.preview"
+            :src="result.preview"
+            fit="cover"
+            class="result-preview-img"
+            :preview-src-list="[result.preview]"
+            preview-teleported
+          />
+          <div class="result-filename">{{ result.filename }}</div>
         </div>
 
-        <div class="detector-results-grid">
-          <div
-            v-for="(result, index) in results"
-            :key="index"
-            class="detector-result-card"
-            :class="{
-              'is-normal': !result.error && result.is_normal,
-              'is-abnormal': !result.error && !result.is_normal,
-              'is-error': result.error,
-            }"
-          >
-            <el-image
-              :src="result.preview"
-              fit="cover"
-              class="detector-result-image"
-              :preview-src-list="[result.preview]"
-              preview-teleported
-            />
-            <div class="detector-result-body">
-              <div class="detector-result-filename">{{ result.filename }}</div>
-              <div class="detector-result-foot">
-                <template v-if="!result.error">
-                  <span class="status-chip" :class="result.is_normal ? 'chip-success' : 'chip-danger'">
-                    {{ result.is_normal ? '正常' : '异常' }}
-                  </span>
-                  <span class="detector-confidence">置信度 {{ (result.confidence * 100).toFixed(1) }}%</span>
-                </template>
-                <template v-else>
-                  <span class="status-chip">检测失败</span>
-                  <span class="detector-error-msg">{{ result.error }}</span>
-                </template>
-              </div>
+        <!-- 右：分析结果 -->
+        <div class="result-content-col">
+          <div v-if="result.status === 'loading'" class="analysis-loading">
+            <div class="loading-icon">✈️</div>
+            <div class="loading-text">AI 分析中…</div>
+          </div>
+
+          <div v-else-if="result.status === 'error'" class="analysis-error">
+            <span class="status-chip">✗ 分析失败</span>
+            <span style="font-size:0.85rem;color:#f56c6c;margin-left:0.5rem">{{ result.error }}</span>
+          </div>
+
+          <template v-else>
+            <div v-if="result.yoloResult" class="yolo-row">
+              <span class="yolo-label">YOLO 初检</span>
+              <span class="status-chip" :class="result.yoloResult.is_normal ? 'chip-success' : 'chip-danger'">
+                {{ result.yoloResult.is_normal ? '正常' : '异常' }}
+              </span>
+              <span class="yolo-conf">置信度 {{ (result.yoloResult.confidence * 100).toFixed(1) }}%</span>
             </div>
-          </div>
+            <div v-else class="yolo-row yolo-unavailable">YOLO 服务不可用</div>
+            <div v-if="result.aiVerdict !== null" class="yolo-row">
+              <span class="yolo-label">AI 判断</span>
+              <span class="status-chip" :class="result.aiVerdict === 'normal' ? 'chip-success' : 'chip-danger'">
+                {{ result.aiVerdict === 'normal' ? '正常' : '异常' }}
+              </span>
+            </div>
+            <div class="analysis-section-title">✈️ AI 检修建议</div>
+            <div class="analysis-content">{{ result.analysis }}</div>
+          </template>
         </div>
-      </section>
-    </template>
+      </div>
+    </section>
 
-    <div v-else-if="!detecting && fileList.length > 0" class="module-panel">
-      <div class="module-empty-state">已选择 {{ fileList.length }} 张图片，点击「开始检测」运行分析。</div>
+    <div v-if="results.length === 0 && !analyzing && fileList.length > 0" class="module-panel">
+      <div class="module-empty-state">已选择 {{ fileList.length }} 张图片，点击「开始 AI 分析」运行分析。</div>
     </div>
 
   </div>
@@ -229,89 +209,93 @@ const errorCount = () => results.value.filter(r => r.error).length;
   margin: 0;
 }
 
-.detector-action-row {
-  margin-top: 1.8rem;
-}
+.detector-action-row { margin-top: 1.8rem; }
 
-.detector-results-grid {
+.result-panel { overflow: hidden; }
+
+.result-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
+  grid-template-columns: 180px 1fr;
+  gap: 1.5rem;
+  align-items: start;
 }
 
-.detector-result-card {
+.result-preview-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.result-preview-img {
+  width: 160px;
+  height: 160px;
   border-radius: 10px;
-  overflow: hidden;
-  border: 1.5px solid var(--border-color, #e4e7ed);
-  background: var(--surface-color, #fff);
-  transition: box-shadow 0.2s, border-color 0.2s;
+  object-fit: cover;
 }
 
-.detector-result-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+.result-filename {
+  font-size: 0.75rem;
+  color: #8899aa;
+  text-align: center;
+  word-break: break-all;
 }
 
-.detector-result-card.is-normal {
-  border-color: #b7eb8f;
-}
+.result-content-col { min-width: 0; }
 
-.detector-result-card.is-abnormal {
-  border-color: #ffa39e;
-}
-
-.detector-result-card.is-error {
-  border-color: #d9d9d9;
-  opacity: 0.75;
-}
-
-.detector-result-image {
-  width: 100%;
-  height: 180px;
-  display: block;
-}
-
-.detector-result-body {
-  padding: 12px 14px;
-}
-
-.detector-result-filename {
-  font-size: 12px;
-  color: var(--text-secondary, #909399);
-  margin-bottom: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.detector-result-foot {
+.analysis-loading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.75rem;
+  padding: 1rem 0;
 }
 
-.chip-success {
-  background: #f6ffed;
-  color: #52c41a;
-  border-color: #b7eb8f;
+.loading-icon {
+  font-size: 1.5rem;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
-.chip-danger {
-  background: #fff2f0;
-  color: #ff4d4f;
-  border-color: #ffa39e;
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
-.detector-confidence {
-  font-size: 12px;
-  color: var(--text-secondary, #909399);
+.loading-text { color: #607087; font-size: 0.9rem; }
+
+.analysis-error { display: flex; align-items: center; padding: 0.75rem 0; }
+
+.yolo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(19, 32, 51, 0.04);
+  border-radius: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
-.detector-error-msg {
-  font-size: 11px;
-  color: #f56c6c;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.yolo-label { font-size: 0.78rem; font-weight: 700; color: #607087; }
+.yolo-conf { font-size: 0.78rem; color: #8899aa; margin-left: auto; }
+.yolo-unavailable { font-size: 0.78rem; color: #aab; }
+
+.analysis-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.analysis-content {
+  font-size: 0.92rem;
+  color: #17263a;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.chip-success { background: #f6ffed; color: #52c41a; }
+.chip-danger { background: #fff2f0; color: #ff4d4f; }
+
+@media (max-width: 768px) {
+  .result-layout { grid-template-columns: 1fr; }
 }
 </style>
