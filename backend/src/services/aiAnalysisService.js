@@ -1,10 +1,16 @@
 const OpenAI = require('openai');
 const fs = require('fs');
 
-const client = new OpenAI({
-    apiKey: process.env.ARK_API_KEY,
-    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-});
+let _client = null;
+function getClient() {
+    if (!_client) {
+        _client = new OpenAI({
+            apiKey: process.env.ARK_API_KEY,
+            baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+        });
+    }
+    return _client;
+}
 
 const SYSTEM_PROMPT = `你是一名专业的民航飞机检修工程师助手，具备丰富的航空维修知识。
 用户会上传飞机部件或机身的检修照片，你需要：
@@ -33,7 +39,7 @@ async function analyzeImage(imagePath, originalFilename, yoloResult = null) {
     }
 
     try {
-        const response = await client.chat.completions.create({
+        const response = await getClient().chat.completions.create({
             model: process.env.ARK_MODEL_ID,
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
