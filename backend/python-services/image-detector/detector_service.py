@@ -9,6 +9,9 @@ app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 
 try:
+    import torch
+    import ultralytics.nn.tasks
+    torch.serialization.add_safe_globals([ultralytics.nn.tasks.ClassificationModel])
     model = YOLO('model/best.pt')
     print('Model loaded successfully')
 except Exception as e:
