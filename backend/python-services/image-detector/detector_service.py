@@ -10,9 +10,11 @@ app.config['JSON_AS_ASCII'] = False
 
 try:
     import torch
-    import ultralytics.nn.tasks
-    torch.serialization.add_safe_globals([ultralytics.nn.tasks.ClassificationModel])
+    # PyTorch 2.6+ weights_only 默认为 True，对自训模型需要关闭此限制
+    original_load = torch.load
+    torch.load = lambda *args, **kwargs: original_load(*args, **{**kwargs, 'weights_only': False})
     model = YOLO('model/best.pt')
+    torch.load = original_load
     print('Model loaded successfully')
 except Exception as e:
     print(f'Failed to load model: {e}')
