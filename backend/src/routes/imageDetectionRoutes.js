@@ -33,6 +33,20 @@ router.post('/detect', authMiddleware, upload.single('file'), imageDetectionCont
 // 批量图片检测
 router.post('/detect/batch', authMiddleware, upload.array('files', 20), imageDetectionController.detectMultipleImages);
 
+// 单独 YOLO 检测
+router.post('/detect-only', authMiddleware, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: '请上传图片' });
+        const imageDetectionService = require('../services/imageDetectionService');
+        const result = await imageDetectionService.detectImage(req.file.path);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    } finally {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    }
+});
+
 // AI 完整分析（YOLO + 豆包）
 router.post('/analyze-full', authMiddleware, upload.single('file'), async (req, res) => {
     try {
@@ -40,16 +54,11 @@ router.post('/analyze-full', authMiddleware, upload.single('file'), async (req, 
         let originalFilename = req.file.originalname;
         try { originalFilename = Buffer.from(req.file.originalname, 'latin1').toString('utf8'); } catch (_) {}
         
-        // 1. 先调 YOLO
-        const imageDetectionService = require('../services/imageDetectionService');
+        // 直接使用前端传来的 yoloResult
         let yoloResult = null;
-        try {
-            yoloResult = await imageDetectionService.detectImage(req.file.path);
-        } catch (yoloError) {
-            console.warn('YOLO 检测失败，继续 AI 分析:', yoloError.message);
+        if (req.body.yoloResult) {
+            try { yoloResult = JSON.parse(req.body.yoloResult); } catch (_) {}
         }
-        
-        // 2. 再调豆包 AI
         const aiResult = await analyzeImage(req.file.path, originalFilename, yoloResult);
         res.json(aiResult);
     } catch (error) {

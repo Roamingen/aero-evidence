@@ -26,30 +26,49 @@ const analyzeImages = async () => {
   results.value = fileList.value.map(f => ({
     filename: f.name,
     preview: f.url || '',
-    status: 'loading',
+    yoloStatus: 'loading',
+    aiStatus: 'loading',
     analysis: null,
     aiVerdict: null,
     yoloResult: null,
     error: null,
   }));
 
-  for (let i = 0; i < fileList.value.length; i++) {
-    const file = fileList.value[i];
-    const formData = new FormData();
-    formData.append('file', file.raw);
+  await Promise.all(fileList.value.map(async (file, i) => {
+    // 阶段一：YOLO
     try {
-      const response = await fetch(buildApiUrl('/api/image-detection/analyze-full'), {
+      const fd1 = new FormData();
+      fd1.append('file', file.raw);
+      const r1 = await fetch(buildApiUrl('/api/image-detection/detect-only'), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${auth.loginResult.value?.token}` },
-        body: formData,
+        body: fd1,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'AI 分析失败');
-      results.value[i] = { ...results.value[i], status: 'done', analysis: data.analysis, aiVerdict: data.aiVerdict, yoloResult: data.yoloResult };
-    } catch (error) {
-      results.value[i] = { ...results.value[i], status: 'error', error: error.message };
+      const yoloData = await r1.json();
+      results.value[i] = { ...results.value[i], yoloStatus: 'done', yoloResult: r1.ok ? yoloData : null };
+    } catch {
+      results.value[i] = { ...results.value[i], yoloStatus: 'error' };
     }
-  }
+
+    // 阶段二：AI 分析
+    try {
+      const fd2 = new FormData();
+      fd2.append('file', file.raw);
+      if (results.value[i].yoloResult) {
+        fd2.append('yoloResult', JSON.stringify(results.value[i].yoloResult));
+      }
+      const r2 = await fetch(buildApiUrl('/api/image-detection/analyze-full'), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${auth.loginResult.value?.token}` },
+        body: fd2,
+      });
+      const aiData = await r2.json();
+      if (!r2.ok) throw new Error(aiData.error || 'AI 分析失败');
+      results.value[i] = { ...results.value[i], aiStatus: 'done', analysis: aiData.analysis, aiVerdict: aiData.aiVerdict };
+    } catch (error) {
+      results.value[i] = { ...results.value[i], aiStatus: 'error', error: error.message };
+    }
+  }));
 
   analyzing.value = false;
   ElMessage.success('全部分析完成');
@@ -93,13 +112,7 @@ const clearAll = () => {
       </div>
 
       <div class="button-row top-gap detector-action-row" style="justify-content: center;">
-        <el-button
-          type="primary"
-          size="large"
-          :loading="analyzing"
-          :disabled="fileList.length === 0"
-          @click="analyzeImages"
-        >
+        <el-button type="primary" size="large" :loading="analyzing" :disabled="fileList.length === 0" @click="analyzeImages">
           {{ analyzing ? 'AI 分析中…' : '开始 AI 分析' }}
         </el-button>
         <el-button size="large" :disabled="fileList.length === 0" @click="clearAll">清空</el-button>
@@ -123,34 +136,47 @@ const clearAll = () => {
 
         <!-- 右：分析结果 -->
         <div class="result-content-col">
-          <div v-if="result.status === 'loading'" class="analysis-loading">
-            <div class="loading-icon">✈️</div>
-            <div class="loading-text">AI 分析中…</div>
+
+          <!-- YOLO 结果（先到） -->
+          <div v-if="result.yoloStatus === 'loading'" class="yolo-row yolo-unavailable">
+            <span class="yolo-label">YOLO 初检</span>
+            <span style="font-size:0.78rem;color:#8899aa">检测中…</span>
+          </div>
+          <div v-else-if="result.yoloResult" class="yolo-row">
+            <span class="yolo-label">YOLO 初检</span>
+            <span class="status-chip" :class="result.yoloResult.is_normal ? 'chip-success' : 'chip-danger'">
+              {{ result.yoloResult.is_normal ? '正常' : '异常' }}
+            </span>
+            <span class="yolo-conf">置信度 {{ (result.yoloResult.confidence * 100).toFixed(1) }}%</span>
+          </div>
+          <div v-else class="yolo-row yolo-unavailable">YOLO 服务不可用</div>
+
+          <!-- AI 判断（后到） -->
+          <div v-if="result.aiStatus === 'loading'" class="yolo-row yolo-unavailable">
+            <span class="yolo-label">AI 判断</span>
+            <span style="font-size:0.78rem;color:#8899aa">AI 分析中…</span>
+          </div>
+          <div v-else-if="result.aiVerdict !== null" class="yolo-row">
+            <span class="yolo-label">AI 判断</span>
+            <span class="status-chip" :class="result.aiVerdict === 'normal' ? 'chip-success' : 'chip-danger'">
+              {{ result.aiVerdict === 'normal' ? '正常' : '异常' }}
+            </span>
           </div>
 
-          <div v-else-if="result.status === 'error'" class="analysis-error">
-            <span class="status-chip">✗ 分析失败</span>
-            <span style="font-size:0.85rem;color:#f56c6c;margin-left:0.5rem">{{ result.error }}</span>
-          </div>
-
-          <template v-else>
-            <div v-if="result.yoloResult" class="yolo-row">
-              <span class="yolo-label">YOLO 初检</span>
-              <span class="status-chip" :class="result.yoloResult.is_normal ? 'chip-success' : 'chip-danger'">
-                {{ result.yoloResult.is_normal ? '正常' : '异常' }}
-              </span>
-              <span class="yolo-conf">置信度 {{ (result.yoloResult.confidence * 100).toFixed(1) }}%</span>
-            </div>
-            <div v-else class="yolo-row yolo-unavailable">YOLO 服务不可用</div>
-            <div v-if="result.aiVerdict !== null" class="yolo-row">
-              <span class="yolo-label">AI 判断</span>
-              <span class="status-chip" :class="result.aiVerdict === 'normal' ? 'chip-success' : 'chip-danger'">
-                {{ result.aiVerdict === 'normal' ? '正常' : '异常' }}
-              </span>
-            </div>
+          <!-- AI 建议 -->
+          <template v-if="result.aiStatus === 'done'">
             <div class="analysis-section-title">✈️ AI 检修建议</div>
             <div class="analysis-content">{{ result.analysis }}</div>
           </template>
+          <div v-else-if="result.aiStatus === 'error'" class="analysis-error">
+            <span class="status-chip">✗ 分析失败</span>
+            <span style="font-size:0.85rem;color:#f56c6c;margin-left:0.5rem">{{ result.error }}</span>
+          </div>
+          <div v-else class="analysis-loading">
+            <div class="loading-icon">✈️</div>
+            <div class="loading-text">AI 分析中，请稍候…</div>
+          </div>
+
         </div>
       </div>
     </section>
@@ -176,10 +202,7 @@ const clearAll = () => {
   margin-top: 0.5rem;
 }
 
-.detector-upload {
-  width: 100%;
-  max-width: 860px;
-}
+.detector-upload { width: 100%; max-width: 860px; }
 
 .detector-upload :deep(.el-upload-list--picture-card) {
   display: flex;
@@ -210,7 +233,6 @@ const clearAll = () => {
 }
 
 .detector-action-row { margin-top: 1.8rem; }
-
 .result-panel { overflow: hidden; }
 
 .result-layout {
@@ -247,7 +269,7 @@ const clearAll = () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1rem 0;
+  padding: 0.75rem 0;
 }
 
 .loading-icon {
@@ -261,7 +283,6 @@ const clearAll = () => {
 }
 
 .loading-text { color: #607087; font-size: 0.9rem; }
-
 .analysis-error { display: flex; align-items: center; padding: 0.75rem 0; }
 
 .yolo-row {
@@ -271,7 +292,7 @@ const clearAll = () => {
   padding: 0.5rem 0.75rem;
   background: rgba(19, 32, 51, 0.04);
   border-radius: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .yolo-label { font-size: 0.78rem; font-weight: 700; color: #607087; }
@@ -282,7 +303,7 @@ const clearAll = () => {
   font-size: 0.85rem;
   font-weight: 700;
   color: #374151;
-  margin-bottom: 0.5rem;
+  margin: 0.5rem 0;
 }
 
 .analysis-content {
