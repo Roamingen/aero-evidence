@@ -216,7 +216,7 @@ async function getRecordDetailByRecordId(recordId, executor) {
         return null;
     }
 
-    const [[payloadRow], [partRows], [measurementRows], [replacementRows], [signatureRows], [specifiedSignerRows], [manifestRows], [attachmentRows], [revisionRows]] = await Promise.all([
+    const [[payloadRows], [partRows], [measurementRows], [replacementRows], [signatureRows], [specifiedSignerRows], [manifestRows], [attachmentRows], [revisionRows]] = await Promise.all([
         db.execute(
             `SELECT *
              FROM maintenance_record_payloads
@@ -283,6 +283,7 @@ async function getRecordDetailByRecordId(recordId, executor) {
     ]);
 
     const manifestRow = manifestRows[0] || null;
+    const payloadRow = payloadRows[0] || null;
 
     return {
         ...record,

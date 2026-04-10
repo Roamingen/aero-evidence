@@ -204,7 +204,7 @@ onMounted(() => {
       />
     </section>
 
-    <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" :append-to-body="false" />
+    <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" :append-to-body="false" @jump="(id) => { detailRecordId = id }" />
   </div>
   </div>
 </template>

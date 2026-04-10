@@ -8,6 +8,7 @@ import { useAuthSession } from '../stores/authSession';
 import { buildApiUrl } from '../utils/apiBase';
 import { parseJsonResponse } from '../utils/http';
 import { signDigestWithMetaMask } from '../utils/metamask';
+import RecordDetailDrawer from '../components/RecordDetailDrawer.vue';
 
 const auth = useAuthSession();
 const route = useRoute();
@@ -40,6 +41,13 @@ const initForm = reactive({
 // ─── Current draft ───
 const currentDraftId = ref(null);
 const currentJobCardNo = ref('');
+const detailVisible = ref(false);
+const detailRecordId = ref(null);
+
+function openDetail(recordId) {
+  detailRecordId.value = recordId;
+  detailVisible.value = true;
+}
 
 // ─── Form data ───
 
@@ -579,26 +587,72 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// ─── Resubmit ───
+const resubmitting = ref(false);
+const resubmitFromRecordId = ref(null);
+
+async function handleResubmit(record) {
+  try {
+    await ElMessageBox.confirm(
+      `将基于「${record.jobCardNo}」创建新版本（R${(record.revision || 1) + 1}）重新提交，原记录保留。`,
+      '重新提交',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+    );
+  } catch { return; }
+
+  resubmitting.value = true;
+  try {
+    const original = await apiJson(`/api/maintenance/records/${record.recordId}`);
+    if (original.supersededByRecordId) {
+      ElMessage.warning('该记录已经发起过重提，请在版本历史中查看最新版本');
+      return;
+    }
+
+    // 不创建草稿，直接在内存中填充表单
+    currentDraftId.value = null; // 重提模式下无草稿 ID
+    currentJobCardNo.value = original.jobCardNo;
+    resubmitFromRecordId.value = record.recordId;
+    populateFormFromDraft(original);
+    finalizeResult.value = null;
+    submitResult.value = null;
+    pagePhase.value = 'edit';
+    ElMessage.success(`已加载原始数据，请修改后点击「定稿」重新提交`);
+  } catch (error) {
+    ElMessage.error(error.message || '加载记录失败');
+  } finally {
+    resubmitting.value = false;
+  }
+}
+
 // ─── Finalize ───
 async function handleFinalize() {
-  // ─── Client-side signer validation ───
   if (reviewerValidationWarning.value) {
     ElMessage.warning(reviewerValidationWarning.value);
     return;
   }
   finalizing.value = true;
   try {
-    // Save first to ensure latest changes are persisted
     const saveBody = buildSaveBody();
-    await apiJson(`/api/maintenance/drafts/${currentDraftId.value}`, {
-      method: 'PUT',
-      body: JSON.stringify(saveBody),
-    });
 
-    const data = await apiJson(`/api/maintenance/drafts/${currentDraftId.value}/finalize`, {
-      method: 'POST',
-    });
-    finalizeResult.value = data;
+    if (resubmitFromRecordId.value) {
+      // 重提场景：直接调 prepare-resubmit，不需要保存草稿
+      const data = await apiJson(`/api/maintenance/records/${resubmitFromRecordId.value}/prepare-resubmit`, {
+        method: 'POST',
+        body: JSON.stringify(saveBody),
+      });
+      finalizeResult.value = data;
+    } else {
+      // 普通草稿定稿
+      await apiJson(`/api/maintenance/drafts/${currentDraftId.value}`, {
+        method: 'PUT',
+        body: JSON.stringify(saveBody),
+      });
+      const data = await apiJson(`/api/maintenance/drafts/${currentDraftId.value}/finalize`, {
+        method: 'POST',
+      });
+      finalizeResult.value = data;
+    }
+
     pagePhase.value = 'finalized';
     ElMessage.success('定稿成功，请签名后提交');
   } catch (error) {
@@ -616,12 +670,30 @@ async function handleSubmit() {
     const expectedAddress = currentUser.value?.address;
     const { signature } = await signDigestWithMetaMask(signedDigest, expectedAddress);
 
-    const data = await apiJson(`/api/maintenance/drafts/${currentDraftId.value}/submit`, {
-      method: 'POST',
-      body: JSON.stringify({ signedDigest, signature }),
-    });
+    let data;
+    if (resubmitFromRecordId.value) {
+      // 重提流程：调用 resubmit 接口建立版本链
+      const saveBody = buildSaveBody();
+      const result = await apiJson(`/api/maintenance/records/${resubmitFromRecordId.value}/resubmit`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ...saveBody,
+          signedDigest,
+          signature,
+          nextRecordId: finalizeResult.value.recordId,
+        }),
+      });
+      data = result.newRecord;
+    } else {
+      data = await apiJson(`/api/maintenance/drafts/${currentDraftId.value}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ signedDigest, signature }),
+      });
+    }
+
     submitResult.value = data;
     pagePhase.value = 'submitted';
+    resubmitFromRecordId.value = null;
     ElMessage.success('检修记录已提交上链');
   } catch (error) {
     ElMessage.error(error.message || '签名提交失败');
@@ -637,6 +709,7 @@ function goBackToList() {
   currentJobCardNo.value = '';
   finalizeResult.value = null;
   submitResult.value = null;
+  resubmitFromRecordId.value = null;
   form.value = createInitialForm();
   attachments.value = [];
   fetchDrafts();
@@ -721,8 +794,14 @@ onMounted(async () => {
           <div class="module-header-row" style="margin-bottom: 0.75rem;">
             <div class="module-title" style="font-size: 1rem;">我的提交记录</div>
           </div>
-          <el-table :data="myRecords" v-loading="myRecordsLoading" stripe size="small" style="width: 100%" max-height="480">
+          <el-table :data="myRecords" v-loading="myRecordsLoading" stripe size="small" style="width: 100%" max-height="480"
+            :row-style="{ cursor: 'pointer' }"
+            @row-click="(row) => openDetail(row.recordId)"
+          >
             <el-table-column prop="jobCardNo" label="工卡号" min-width="140" />
+            <el-table-column prop="revision" label="版本" width="60">
+              <template #default="{ row }">R{{ row.revision || 1 }}</template>
+            </el-table-column>
             <el-table-column prop="aircraftRegNo" label="飞机注册号" min-width="100">
               <template #default="{ row }">{{ row.aircraftRegNo || '-' }}</template>
             </el-table-column>
@@ -733,6 +812,15 @@ onMounted(async () => {
             </el-table-column>
             <el-table-column prop="submittedAt" label="提交时间" min-width="140">
               <template #default="{ row }">{{ row.submittedAt ? new Date(row.submittedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.status === 'rejected' && !row.supersededByRecordId"
+                  text type="warning" size="small"
+                  @click.stop="handleResubmit(row)"
+                >重新提交</el-button>
+              </template>
             </el-table-column>
           </el-table>
           <div v-if="!myRecordsLoading && myRecords.length === 0" class="empty-inline-state" style="margin-top: 0.75rem">
@@ -1138,7 +1226,7 @@ onMounted(async () => {
       <!-- Action buttons -->
       <div class="button-row submit-row">
         <el-button @click="goBackToList">返回列表</el-button>
-        <el-button :loading="saving" @click="handleSaveDraft">保存草稿</el-button>
+        <el-button v-if="!resubmitFromRecordId" :loading="saving" @click="handleSaveDraft">保存草稿</el-button>
         <el-button type="primary" :loading="finalizing" @click="handleFinalize">定稿</el-button>
       </div>
     </template>
@@ -1325,6 +1413,8 @@ onMounted(async () => {
 
   </div>
   </div>
+
+  <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" :append-to-body="false" @jump="(id) => { detailRecordId = id }" />
 </template>
 
 <style scoped>

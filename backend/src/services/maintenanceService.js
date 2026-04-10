@@ -831,6 +831,30 @@ async function appendSignature(currentAddress, recordId, body) {
     return maintenanceStore.getRecordDetailByRecordId(record.recordId);
 }
 
+async function prepareResubmitRecord(currentAddress, recordId, body) {
+    const currentUser = await requireCurrentUser(currentAddress);
+    const previousRecord = await maintenanceStore.getRecordDetailByRecordId(recordId);
+    if (!previousRecord) throw createError('原检修记录不存在', 404);
+    if (!STATUS_ALLOWED_FOR_RESUBMIT.has(previousRecord.status)) throw createError('只有已驳回的记录才能重提', 409);
+    if (previousRecord.supersededByRecordId) throw createError('该记录已经发起过重提', 409);
+
+    const basePayload = buildBasePayload(body || {}, currentUser, previousRecord);
+    const specifiedSigners = await resolveSpecifiedSigners(body.specifiedSigners, previousRecord.specifiedSigners || []);
+    const nextRevision = previousRecord.revision + 1;
+    const nextRecordId = generateRecordId(basePayload.jobCardNo, nextRevision);
+    const record = buildRecordForPersistence({
+        ...basePayload,
+        specifiedSigners,
+        recordId: nextRecordId,
+        rootRecordId: previousRecord.rootRecordId,
+        previousRecordId: previousRecord.recordId,
+        revision: nextRevision,
+    });
+
+    validateSpecifiedSignerCoverage(record);
+    return createPreparedSubmitResponse(record, currentUser);
+}
+
 async function resubmitRejectedRecord(currentAddress, recordId, body) {
     const currentUser = await requireCurrentUser(currentAddress);
     const previousRecord = await maintenanceStore.getRecordDetailByRecordId(recordId);
@@ -847,7 +871,7 @@ async function resubmitRejectedRecord(currentAddress, recordId, body) {
     const basePayload = buildBasePayload(body || {}, currentUser, previousRecord);
     const specifiedSigners = await resolveSpecifiedSigners(body.specifiedSigners, previousRecord.specifiedSigners || []);
     const nextRevision = previousRecord.revision + 1;
-    const nextRecordId = body.nextRecordId || body.recordId
+    const nextRecordId = (body.nextRecordId || body.recordId)
         ? assertBytes32Hex(body.nextRecordId || body.recordId, 'nextRecordId')
         : generateRecordId(basePayload.jobCardNo, nextRevision);
     const record = buildRecordForPersistence({
@@ -1072,6 +1096,7 @@ module.exports = {
     getWorkbench,
     listRevisions,
     listRecords,
+    prepareResubmitRecord,
     prepareSubmitRecord,
     resubmitRejectedRecord,
     submitRecord,

@@ -17,5 +17,6 @@ router.get('/records/:recordId/attachments/download-all', maintenanceController.
 router.get('/records/:recordId/attachments/:attachmentId/preview', maintenanceController.previewRecordAttachment);
 router.post('/records/:recordId/signatures', maintenanceController.appendSignature);
 router.post('/records/:recordId/resubmit', maintenanceController.resubmitRejectedRecord);
+router.post('/records/:recordId/prepare-resubmit', maintenanceController.prepareResubmitRecord);
 
 module.exports = router;

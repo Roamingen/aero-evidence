@@ -157,6 +157,19 @@ async function downloadRecordAttachmentsZip(req, res, next) {
     }
 }
 
+async function prepareResubmitRecord(req, res, next) {
+    try {
+        const result = await maintenanceService.prepareResubmitRecord(
+            req.auth.address,
+            req.params.recordId,
+            req.body || {}
+        );
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     appendSignature,
     downloadRecordAttachmentsZip,
@@ -164,6 +177,7 @@ module.exports = {
     getWorkbench,
     listRevisions,
     listRecords,
+    prepareResubmitRecord,
     prepareSubmitRecord,
     previewRecordAttachment,
     resubmitRejectedRecord,

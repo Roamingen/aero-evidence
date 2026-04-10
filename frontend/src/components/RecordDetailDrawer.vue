@@ -3,29 +3,26 @@ import { computed, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAuthSession } from '../stores/authSession';
 import { authorizedJsonRequest } from '../utils/apiClient';
-import { buildApiUrl } from '../utils/apiBase';
 import { Loading, Download } from '@element-plus/icons-vue';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   recordId: { type: String, default: null },
 });
-const emit = defineEmits(['update:visible']);
+const emit = defineEmits(['update:visible', 'jump']);
 
 const auth = useAuthSession();
 const loading = ref(false);
 const record = ref(null);
-const attachmentPreviewUrls = ref({});  // Cache for blob URLs
+const attachmentPreviewUrls = ref({});
 
 const internalVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val),
 });
 
-// ─── Sections to expand by default ───
 const expandedSections = ref(['basic', 'payload', 'parts', 'measurements', 'replacements', 'sigTimeline', 'specifiedSigners', 'attachments', 'revisions']);
 
-// ─── Label maps ───
 const STATUS_LABELS = { draft: '草稿', finalized: '已定稿', submitted: '待审核', peer_checked: '已复核', rii_approved: '已RII批准', released: '已放行', rejected: '已驳回' };
 const ACTION_LABELS = { submit: '提交', technician_sign: '技术签名', reviewer_sign: '审核签名', rii_approve: 'RII 批准', release: '放行', reject: '驳回' };
 const ROLE_LABELS = { technician: '工程师', reviewer: '审核员', rii_inspector: 'RII 检查员', release_authority: '放行人员' };
@@ -38,18 +35,11 @@ function actionColor(a) { return ACTION_COLORS[a] || ''; }
 
 function formatDateTime(val) {
   if (!val) return '-';
-  const date = new Date(val);
-  const formatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Shanghai',
-  });
-  return formatter.format(date).replace(/\//g, '-');
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false, timeZone: 'Asia/Shanghai',
+  }).format(new Date(val)).replace(/\//g, '-');
 }
 
 function formatFileSize(bytes) {
@@ -81,7 +71,6 @@ function statusTagType(s) {
   return m[s] || 'info';
 }
 
-// ─── Image preview functions ───
 function isImageFile(attachmentType) {
   return attachmentType === 'image';
 }
@@ -90,27 +79,15 @@ async function getAttachmentPreviewBlobUrl(recordId, att) {
   try {
     const token = auth.loginResult.value?.token;
     if (!token) return null;
-
-    // 直接构建完整的 API URL，而不依赖 buildApiUrl
     const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:3000' : '';
     const url = `${baseUrl}/api/maintenance/records/${recordId}/attachments/${att.attachmentId}/preview`;
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) {
-      console.error(`Failed to load image: ${response.statusText}`);
-      return null;
-    }
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) return null;
     const blob = await response.blob();
     return URL.createObjectURL(blob);
-  } catch (error) {
-    console.error('Error loading preview:', error);
-    return null;
-  }
+  } catch { return null; }
 }
 
-// ─── Fetch data on recordId change ───
 const downloadingAll = ref(false);
 
 function triggerBlobDownload(blob, fileName) {
@@ -130,16 +107,10 @@ async function downloadAttachment(att) {
     if (!token) return;
     const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:3000' : '';
     const url = `${baseUrl}/api/maintenance/records/${props.recordId}/attachments/${att.attachmentId}/preview`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) throw new Error(response.statusText);
-    const blob = await response.blob();
-    triggerBlobDownload(blob, att.originalFileName || att.fileName || 'download');
-  } catch (error) {
-    ElMessage.error('下载附件失败');
-    console.error('Download error:', error);
-  }
+    triggerBlobDownload(await response.blob(), att.originalFileName || att.fileName || 'download');
+  } catch { ElMessage.error('下载附件失败'); }
 }
 
 async function downloadAllAttachments() {
@@ -148,20 +119,13 @@ async function downloadAllAttachments() {
     const token = auth.loginResult.value?.token;
     if (!token) return;
     const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:3000' : '';
-    const url = `${baseUrl}/api/maintenance/records/${props.recordId}/attachments/download-all`;
-    const response = await fetch(url, {
+    const response = await fetch(`${baseUrl}/api/maintenance/records/${props.recordId}/attachments/download-all`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(response.statusText);
-    const blob = await response.blob();
-    const fileName = `attachments-${record.value?.jobCardNo || 'record'}.zip`;
-    triggerBlobDownload(blob, fileName);
-  } catch (error) {
-    ElMessage.error('下载全部附件失败');
-    console.error('Download all error:', error);
-  } finally {
-    downloadingAll.value = false;
-  }
+    triggerBlobDownload(await response.blob(), `attachments-${record.value?.jobCardNo || 'record'}.zip`);
+  } catch { ElMessage.error('下载全部附件失败'); }
+  finally { downloadingAll.value = false; }
 }
 
 watch(
@@ -175,15 +139,11 @@ watch(
     attachmentPreviewUrls.value = {};
     try {
       record.value = await authorizedJsonRequest(token, `/api/maintenance/records/${newId}`, { method: 'GET' });
-
-      // ─── Preload image preview URLs ───
-      if (record.value.attachments && Array.isArray(record.value.attachments)) {
+      if (record.value.attachments) {
         for (const att of record.value.attachments) {
           if (isImageFile(att.attachmentType)) {
             const blobUrl = await getAttachmentPreviewBlobUrl(newId, att);
-            if (blobUrl) {
-              attachmentPreviewUrls.value[att.attachmentId] = blobUrl;
-            }
+            if (blobUrl) attachmentPreviewUrls.value[att.attachmentId] = blobUrl;
           }
         }
       }
@@ -204,7 +164,7 @@ watch(
 
       <el-collapse v-if="record" v-model="expandedSections">
 
-        <!-- 1. Basic Info -->
+        <!-- 1. 基础信息 -->
         <el-collapse-item title="基础信息" name="basic">
           <div class="detail-grid two-up-grid">
             <div class="detail-item"><span class="detail-label">记录号</span><span class="detail-value mono" :title="record.recordId">{{ truncHash(record.recordId, 20) }}</span></div>
@@ -220,50 +180,53 @@ watch(
               <span class="detail-label">状态</span>
               <span class="detail-value"><el-tag :type="statusTagType(record.status)" size="small">{{ statusLabel(record.status) }}</el-tag></span>
             </div>
-            <div class="detail-item"><span class="detail-label">版本</span><span class="detail-value">{{ record.revision }}</span></div>
+            <div class="detail-item"><span class="detail-label">版本</span><span class="detail-value">R{{ record.revision }}</span></div>
             <div class="detail-item"><span class="detail-label">RII</span><span class="detail-value">{{ record.isRII ? '是' : '否' }}</span></div>
             <div class="detail-item"><span class="detail-label">签名进度</span><span class="detail-value">{{ signingProgress(record) }}</span></div>
             <div class="detail-item"><span class="detail-label">提交时间</span><span class="detail-value">{{ formatDateTime(record.submittedAt) }}</span></div>
-            <div v-if="record.rejectionReason" class="detail-item detail-full-width"><span class="detail-label">驳回原因</span><span class="detail-value" style="color: var(--el-color-danger);">{{ record.rejectionReason }}</span></div>
+            <div v-if="record.rejectionReason" class="detail-item detail-full-width">
+              <span class="detail-label">驳回原因</span>
+              <span class="detail-value" style="color: var(--el-color-danger);">{{ record.rejectionReason }}</span>
+            </div>
           </div>
         </el-collapse-item>
 
-        <!-- 2. Payload -->
-        <el-collapse-item title="工作详情" name="payload" v-if="record.payload">
+        <!-- 2. 工作详情 -->
+        <el-collapse-item title="工作详情" name="payload">
           <div class="detail-stack">
             <div class="detail-item detail-full-width">
               <span class="detail-label">工作描述</span>
-              <span class="detail-value pre-wrap">{{ record.payload.workDescription || '-' }}</span>
+              <span class="detail-value pre-wrap">{{ record.payload?.workDescription || '-' }}</span>
             </div>
-            <div class="detail-item detail-full-width" v-if="record.payload.referenceDocument">
+            <div v-if="record.payload?.referenceDocument" class="detail-item detail-full-width">
               <span class="detail-label">参考手册</span>
               <span class="detail-value">{{ record.payload.referenceDocument }}</span>
             </div>
-            <div class="detail-item detail-full-width" v-if="record.payload.faultCode">
+            <div v-if="record.payload?.faultCode" class="detail-item detail-full-width">
               <span class="detail-label">故障代码</span>
               <span class="detail-value">{{ record.payload.faultCode }}</span>
             </div>
-            <div class="detail-item detail-full-width" v-if="record.payload.faultDescription">
+            <div v-if="record.payload?.faultDescription" class="detail-item detail-full-width">
               <span class="detail-label">故障描述</span>
               <span class="detail-value pre-wrap">{{ record.payload.faultDescription }}</span>
             </div>
           </div>
         </el-collapse-item>
 
-        <!-- 3. Parts -->
+        <!-- 3. 零件信息 -->
         <el-collapse-item title="零件信息" name="parts" v-if="record.parts && record.parts.length > 0">
           <div v-for="(p, i) in record.parts" :key="i" class="sub-card">
             <div class="sub-card-title">零件 {{ i + 1 }} · {{ p.partRole }}</div>
             <div class="detail-grid two-up-grid">
               <div class="detail-item"><span class="detail-label">件号</span><span class="detail-value">{{ p.partNumber || '-' }}</span></div>
-              <div class="detail-item"><span class="detail-label">序列号</span><span class="detail-value">{{ p.serialNumber || '-' }}</span></div>
-              <div class="detail-item"><span class="detail-label">状态</span><span class="detail-value">{{ p.partStatus || '-' }}</span></div>
-              <div class="detail-item"><span class="detail-label">来源</span><span class="detail-value">{{ p.sourceDescription || '-' }}</span></div>
+              <div v-if="p.serialNumber" class="detail-item"><span class="detail-label">序列号</span><span class="detail-value">{{ p.serialNumber }}</span></div>
+              <div v-if="p.partStatus" class="detail-item"><span class="detail-label">状态</span><span class="detail-value">{{ p.partStatus }}</span></div>
+              <div v-if="p.sourceDescription" class="detail-item"><span class="detail-label">来源</span><span class="detail-value">{{ p.sourceDescription }}</span></div>
             </div>
           </div>
         </el-collapse-item>
 
-        <!-- 4. Measurements -->
+        <!-- 4. 测量数据 -->
         <el-collapse-item title="测量数据" name="measurements" v-if="record.measurements && record.measurements.length > 0">
           <div v-for="(m, i) in record.measurements" :key="i" class="sub-card">
             <div class="detail-grid two-up-grid">
@@ -277,30 +240,25 @@ watch(
           </div>
         </el-collapse-item>
 
-        <!-- 5. Replacements -->
+        <!-- 5. 更换记录 -->
         <el-collapse-item title="更换记录" name="replacements" v-if="record.replacements && record.replacements.length > 0">
           <div v-for="(r, i) in record.replacements" :key="i" class="sub-card">
             <div class="sub-card-title">更换 {{ i + 1 }}</div>
             <div class="detail-grid two-up-grid">
               <div class="detail-item"><span class="detail-label">拆下件号</span><span class="detail-value">{{ r.removedPartNo || '-' }}</span></div>
-              <div class="detail-item"><span class="detail-label">拆下序列号</span><span class="detail-value">{{ r.removedSerialNo || '-' }}</span></div>
+              <div v-if="r.removedSerialNo" class="detail-item"><span class="detail-label">拆下序列号</span><span class="detail-value">{{ r.removedSerialNo }}</span></div>
               <div class="detail-item"><span class="detail-label">安装件号</span><span class="detail-value">{{ r.installedPartNo || '-' }}</span></div>
-              <div class="detail-item"><span class="detail-label">安装序列号</span><span class="detail-value">{{ r.installedSerialNo || '-' }}</span></div>
-              <div class="detail-item detail-full-width" v-if="r.replacementReason"><span class="detail-label">更换原因</span><span class="detail-value">{{ r.replacementReason }}</span></div>
+              <div v-if="r.installedSerialNo" class="detail-item"><span class="detail-label">安装序列号</span><span class="detail-value">{{ r.installedSerialNo }}</span></div>
+              <div v-if="r.replacementReason" class="detail-item detail-full-width"><span class="detail-label">更换原因</span><span class="detail-value">{{ r.replacementReason }}</span></div>
             </div>
           </div>
         </el-collapse-item>
 
-        <!-- 6. Signature Timeline -->
+        <!-- 6. 签名时间线 -->
         <el-collapse-item title="签名时间线" name="sigTimeline">
           <div v-if="!record.signatures || record.signatures.length === 0" class="module-empty-state">暂无签名记录。</div>
           <div v-else class="timeline-stack">
-            <div
-              v-for="(sig, i) in record.signatures"
-              :key="i"
-              class="timeline-item"
-              :class="actionColor(sig.action)"
-            >
+            <div v-for="(sig, i) in record.signatures" :key="i" class="timeline-item" :class="actionColor(sig.action)">
               <div class="timeline-dot"></div>
               <div class="timeline-content">
                 <div class="timeline-head">
@@ -316,7 +274,7 @@ watch(
           </div>
         </el-collapse-item>
 
-        <!-- 7. Specified Signers -->
+        <!-- 7. 指定签名人 -->
         <el-collapse-item title="指定签名人" name="specifiedSigners">
           <div v-if="!record.specifiedSigners || record.specifiedSigners.length === 0" class="module-empty-state">未指定签名人。</div>
           <div v-else class="detail-stack">
@@ -325,19 +283,15 @@ watch(
               <span class="detail-value">
                 {{ s.signerName || s.signerEmployeeNo }}
                 <el-tag :type="s.status === 'signed' ? 'success' : s.status === 'cancelled' ? 'info' : 'warning'" size="small" style="margin-left: 6px;">{{ signerStatusLabel(s.status) }}</el-tag>
-                <template v-if="s.signedAt"><span style="margin-left: 6px; color: var(--text-secondary, #888); font-size: 0.78rem;">签于 {{ formatDateTime(s.signedAt) }}</span></template>
+                <template v-if="s.signedAt"><span style="margin-left: 6px; color: #888; font-size: 0.78rem;">签于 {{ formatDateTime(s.signedAt) }}</span></template>
               </span>
             </div>
           </div>
         </el-collapse-item>
 
-        <!-- 8. Attachments -->
+        <!-- 8. 附件 -->
         <el-collapse-item name="attachments" v-if="record.attachments && record.attachments.length > 0">
-          <template #title>
-            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
-              <span>附件 ({{ record.attachments.length }})</span>
-            </div>
-          </template>
+          <template #title>附件 ({{ record.attachments.length }})</template>
           <div style="margin-bottom: 10px; text-align: right;">
             <el-button size="small" type="primary" plain :loading="downloadingAll" @click.stop="downloadAllAttachments">
               <el-icon v-if="!downloadingAll"><Download /></el-icon>
@@ -346,38 +300,28 @@ watch(
           </div>
           <div class="detail-stack">
             <div v-for="(a, i) in record.attachments" :key="i" class="attachment-item">
-              <!-- Image preview -->
-              <el-image
-                v-if="isImageFile(a.attachmentType) && attachmentPreviewUrls[a.attachmentId]"
+              <el-image v-if="isImageFile(a.attachmentType) && attachmentPreviewUrls[a.attachmentId]"
                 :src="attachmentPreviewUrls[a.attachmentId]"
                 :preview-src-list="[attachmentPreviewUrls[a.attachmentId]]"
-                style="width: 60px; height: 60px; border-radius: 4px; object-fit: cover; cursor: pointer; flex-shrink: 0;"
-              />
-              <!-- Image loading placeholder -->
-              <div
-                v-else-if="isImageFile(a.attachmentType)"
-                style="width: 60px; height: 60px; border-radius: 4px; background: var(--el-fill-color-light); display: flex; align-items: center; justify-content: center; color: var(--el-text-color-secondary); flex-shrink: 0;"
-              >
+                style="width:60px;height:60px;border-radius:4px;object-fit:cover;cursor:pointer;flex-shrink:0;" />
+              <div v-else-if="isImageFile(a.attachmentType)"
+                style="width:60px;height:60px;border-radius:4px;background:var(--el-fill-color-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                 <el-icon><Loading /></el-icon>
               </div>
-              <!-- File info -->
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  {{ a.originalFileName || a.fileName || '-' }}
-                </div>
-                <div style="font-size: 0.8rem; color: var(--el-text-color-secondary); margin-top: 0.2rem;">
-                  {{ a.attachmentType || '-' }} · {{ formatFileSize(a.fileSize) }} · <span class="mono" style="font-size: 0.75rem;">{{ truncHash(a.contentHash) }}</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.originalFileName || a.fileName || '-' }}</div>
+                <div style="font-size:0.8rem;color:var(--el-text-color-secondary);margin-top:0.2rem;">
+                  {{ a.attachmentType || '-' }} · {{ formatFileSize(a.fileSize) }} · <span class="mono" style="font-size:0.75rem;">{{ truncHash(a.contentHash) }}</span>
                 </div>
               </div>
-              <!-- Download button -->
-              <el-button size="small" text type="primary" @click="downloadAttachment(a)" style="flex-shrink: 0;">
+              <el-button size="small" text type="primary" @click="downloadAttachment(a)" style="flex-shrink:0;">
                 <el-icon><Download /></el-icon>
               </el-button>
             </div>
           </div>
         </el-collapse-item>
 
-        <!-- 9. Hashes & Chain -->
+        <!-- 9. 哈希与链上信息 -->
         <el-collapse-item title="哈希与链上信息" name="hashes">
           <div class="detail-stack" v-if="record.hashes">
             <div class="detail-item detail-full-width" v-for="(val, key) in record.hashes" :key="key">
@@ -385,29 +329,37 @@ watch(
               <span class="detail-value mono hash-full">{{ val || '-' }}</span>
             </div>
           </div>
-          <div class="detail-stack" style="margin-top: 12px;">
-            <div class="detail-item detail-full-width" v-if="record.chainTxHash">
+          <div class="detail-stack" style="margin-top:12px;">
+            <div v-if="record.chainTxHash" class="detail-item detail-full-width">
               <span class="detail-label">交易哈希</span>
               <span class="detail-value mono hash-full">{{ record.chainTxHash }}</span>
             </div>
-            <div class="detail-item detail-full-width" v-if="record.chainBlockNumber">
+            <div v-if="record.chainBlockNumber" class="detail-item detail-full-width">
               <span class="detail-label">区块高度</span>
               <span class="detail-value">{{ record.chainBlockNumber }}</span>
             </div>
           </div>
         </el-collapse-item>
 
-        <!-- 10. Revisions -->
-        <el-collapse-item title="版本历史" name="revisions" v-if="record.revisions && record.revisions.length > 1">
+        <!-- 10. 版本历史 -->
+        <el-collapse-item title="版本历史" name="revisions" v-if="record.revisions && record.revisions.length > 0">
           <div class="timeline-stack">
-            <div v-for="rev in record.revisions" :key="rev.recordId" class="timeline-item">
+            <div v-for="rev in record.revisions" :key="rev.recordId" class="timeline-item"
+              :class="rev.recordId === record.recordId ? 'timeline-action-release' : ''">
               <div class="timeline-dot"></div>
               <div class="timeline-content">
                 <div class="timeline-head">
-                  <span>Revision {{ rev.revision }}</span>
+                  <span style="font-weight:700">R{{ rev.revision }}</span>
                   <el-tag :type="statusTagType(rev.status)" size="small">{{ statusLabel(rev.status) }}</el-tag>
+                  <el-tag v-if="rev.recordId === record.recordId" type="success" size="small">当前版本</el-tag>
+                  <el-tag v-if="rev.supersededByRecordId" type="info" size="small">已被取代</el-tag>
                 </div>
-                <div class="timeline-body">{{ formatDateTime(rev.createdAt) }}</div>
+                <div class="timeline-body" style="font-size:0.75rem;color:#8899aa;">{{ formatDateTime(rev.createdAt) }}</div>
+                <div v-if="rev.rejectedAt" class="timeline-body" style="color:#f56c6c;font-size:0.78rem;">驳回于 {{ formatDateTime(rev.rejectedAt) }}</div>
+                <div v-if="rev.releasedAt" class="timeline-body" style="color:#67c23a;font-size:0.78rem;">放行于 {{ formatDateTime(rev.releasedAt) }}</div>
+                <div v-if="rev.recordId !== record.recordId" style="margin-top:6px;">
+                  <el-button size="small" text type="primary" @click="emit('jump', rev.recordId)">查看此版本</el-button>
+                </div>
               </div>
             </div>
           </div>
@@ -419,128 +371,27 @@ watch(
 </template>
 
 <style scoped>
-.drawer-body {
-  padding: 0 4px;
-  min-height: 300px;
-}
-
-/* ─── Collapse tweaks ─── */
-:deep(.el-collapse-item__header) {
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-:deep(.el-collapse-item__content) {
-  padding-bottom: 12px;
-}
-
-/* ─── Detail items ─── */
-.detail-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.detail-full-width {
-  grid-column: 1 / -1;
-}
-.pre-wrap {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* ─── Sub cards (light) ─── */
-.sub-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-color, #333);
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 8px;
-}
-.sub-card-title {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-secondary, #888);
-  margin-bottom: 6px;
-}
-
-/* ─── Timeline ─── */
-.timeline-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding-left: 8px;
-}
-.timeline-item {
-  display: flex;
-  gap: 12px;
-  padding: 10px 0;
-  border-left: 2px solid var(--border-color, #333);
-  padding-left: 16px;
-  position: relative;
-}
-.timeline-dot {
-  position: absolute;
-  left: -6px;
-  top: 14px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent-color, #4fc3f7);
-  border: 2px solid var(--bg-primary, #111);
-}
-.timeline-content {
-  flex: 1;
-}
-.timeline-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.timeline-time {
-  font-size: 0.78rem;
-  color: var(--text-muted, #666);
-}
-.timeline-body {
-  font-size: 0.85rem;
-  color: var(--text-primary, #e0e0e0);
-}
-.timeline-role {
-  color: var(--text-secondary, #888);
-  font-size: 0.8rem;
-}
-
-/* Action color accents */
-.timeline-action-reject {
-  border-left-color: var(--el-color-danger, #f56c6c);
-}
-.timeline-action-reject .timeline-dot {
-  background: var(--el-color-danger, #f56c6c);
-}
-.timeline-action-release {
-  border-left-color: var(--el-color-success, #67c23a);
-}
-.timeline-action-release .timeline-dot {
-  background: var(--el-color-success, #67c23a);
-}
-.timeline-action-rii .timeline-dot {
-  background: var(--el-color-warning, #e6a23c);
-}
-
-/* ─── Hash full display ─── */
-.hash-full {
-  word-break: break-all;
-  font-size: 0.75rem;
-  line-height: 1.5;
-}
-
-/* ─── Attachment items with image preview ─── */
-.attachment-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
+.drawer-body { padding: 0 4px; min-height: 300px; }
+:deep(.el-collapse-item__header) { font-weight: 600; font-size: 0.9rem; }
+:deep(.el-collapse-item__content) { padding-bottom: 12px; }
+.detail-stack { display: flex; flex-direction: column; gap: 8px; }
+.detail-full-width { grid-column: 1 / -1; }
+.pre-wrap { white-space: pre-wrap; word-break: break-word; }
+.sub-card { background: rgba(255,255,255,0.04); border: 1px solid var(--border-color,#333); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+.sub-card-title { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary,#888); margin-bottom: 6px; }
+.timeline-stack { display: flex; flex-direction: column; gap: 0; padding-left: 8px; }
+.timeline-item { display: flex; gap: 12px; padding: 10px 0; border-left: 2px solid var(--border-color,#333); padding-left: 16px; position: relative; }
+.timeline-dot { position: absolute; left: -6px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-color,#4fc3f7); border: 2px solid var(--bg-primary,#111); }
+.timeline-content { flex: 1; }
+.timeline-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.timeline-time { font-size: 0.78rem; color: var(--text-muted,#666); }
+.timeline-body { font-size: 0.85rem; color: var(--text-primary,#e0e0e0); }
+.timeline-role { color: var(--text-secondary,#888); font-size: 0.8rem; }
+.timeline-action-reject { border-left-color: var(--el-color-danger,#f56c6c); }
+.timeline-action-reject .timeline-dot { background: var(--el-color-danger,#f56c6c); }
+.timeline-action-release { border-left-color: var(--el-color-success,#67c23a); }
+.timeline-action-release .timeline-dot { background: var(--el-color-success,#67c23a); }
+.timeline-action-rii .timeline-dot { background: var(--el-color-warning,#e6a23c); }
+.hash-full { word-break: break-all; font-size: 0.75rem; line-height: 1.5; }
+.attachment-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); }
 </style>
