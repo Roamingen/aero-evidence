@@ -169,10 +169,13 @@ onMounted(() => {
           <span>状态</span>
           <span>签名进度</span>
           <span>更新时间</span>
-          <span>操作</span>
         </div>
 
-        <div v-for="row in records" :key="row.recordId" class="records-table-row records-table-row-wide">
+        <div v-for="row in records" :key="row.recordId"
+          class="records-table-row records-table-row-wide row-button"
+          style="cursor:pointer"
+          @click="openRecordDetail(row.recordId)"
+        >
           <span class="mono">{{ row.recordId }}</span>
           <span>{{ row.aircraftRegNo }}</span>
           <span>{{ row.workType }}</span>
@@ -180,9 +183,6 @@ onMounted(() => {
           <span><span class="status-chip">{{ statusLabel(row.status) }}</span></span>
           <span>{{ row.reviewerSignatureCount }}/{{ row.requiredReviewerSignatures }}</span>
           <span>{{ formatDateTime(row.updatedAt) }}</span>
-          <span>
-            <el-button text type="primary" @click="openRecordDetail(row.recordId)">查看详情</el-button>
-          </span>
         </div>
 
         <div v-if="records.length === 0 && !loading" class="module-empty-state">

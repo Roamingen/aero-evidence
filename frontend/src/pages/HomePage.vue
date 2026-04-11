@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import * as echarts from 'echarts';
+import RecordDetailDrawer from '../components/RecordDetailDrawer.vue';
 
 const chartsLoading = ref(false);
 
@@ -18,6 +19,14 @@ const recentBlocks = ref([]);
 const recentTransactions = ref([]);
 
 const activityLog = ref([]);
+
+const detailVisible = ref(false);
+const detailRecordId = ref(null);
+
+function openRecordDetail(recordId) {
+  detailRecordId.value = recordId;
+  detailVisible.value = true;
+}
 
 function getAuthToken() {
   try {
@@ -182,7 +191,7 @@ onUnmounted(unmountChart);
           <el-tab-pane label="最新条目" name="records">
             <div class="browser-content-compact">
               <div v-if="recentRecords.length === 0" class="empty-tip">暂无上链记录</div>
-              <div v-for="item in recentRecords" :key="item.id" class="queue-card">
+              <div v-for="item in recentRecords" :key="item.id" class="queue-card" style="cursor:pointer" @click="openRecordDetail(item.id)">
                 <div class="queue-card-head">
                   <strong>{{ item.id }}</strong>
                   <span class="status-chip">{{ item.status }}</span>
@@ -201,7 +210,7 @@ onUnmounted(unmountChart);
                   <strong>Block #{{ item.blockNo }}</strong>
                   <span class="status-chip">{{ item.transactions }} txns</span>
                 </div>
-                <div class="queue-card-copy mono" style="font-size:0.78rem">{{ item.hash }}</div>
+                <div class="queue-card-copy mono" style="font-size:0.78rem;word-break:break-all">{{ item.hash }}</div>
                 <div class="queue-card-foot">{{ item.timestamp }}</div>
               </div>
             </div>
@@ -215,7 +224,7 @@ onUnmounted(unmountChart);
                   <strong>{{ item.type }}</strong>
                   <span class="status-chip">{{ item.status }}</span>
                 </div>
-                <div class="queue-card-copy mono" style="font-size:0.78rem">{{ item.hash }}</div>
+                <div class="queue-card-copy mono" style="font-size:0.78rem;word-break:break-all">{{ item.hash }}</div>
                 <div class="queue-card-foot">{{ item.aircraftNo }} · {{ item.timestamp }}</div>
               </div>
             </div>
@@ -248,6 +257,8 @@ onUnmounted(unmountChart);
         </div>
       </div>
     </section>
+
+    <RecordDetailDrawer v-model:visible="detailVisible" :record-id="detailRecordId" @jump="(id) => { detailRecordId.value = id }" />
   </div>
 </template>
 
@@ -257,7 +268,7 @@ onUnmounted(unmountChart);
 .browser-tabs-compact { margin-bottom: 0; }
 .browser-tabs-compact :deep(.el-tabs__header) { margin: 0 0 0.75rem 0 !important; }
 
-.browser-content-compact { display: grid; gap: 0.65rem; max-height: 310px; overflow-y: auto; }
+.browser-content-compact { display: grid; gap: 0.65rem; max-height: 310px; overflow-y: auto; overflow-x: hidden; }
 
 .empty-tip { color: #999; font-size: 0.85rem; padding: 1rem; }
 

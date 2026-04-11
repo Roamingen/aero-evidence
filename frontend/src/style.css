@@ -606,7 +606,7 @@ input {
 }
 
 .records-table-row-wide {
-    grid-template-columns: 1.45fr 0.8fr 1fr 0.6fr 0.8fr 0.8fr 1fr 0.55fr;
+    grid-template-columns: 1.45fr 0.8fr 1fr 0.6fr 0.8fr 0.8fr 1fr;
     min-width: 0;
 }
 
@@ -723,6 +723,8 @@ input {
     border-radius: 1rem;
     border: 1px solid rgba(19, 32, 51, 0.07);
     background: rgba(248, 250, 253, 0.95);
+    min-width: 0;
+    overflow: hidden;
 }
 
 .muted-card {
@@ -734,6 +736,14 @@ input {
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
+}
+
+.queue-card-head strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
 }
 
 .queue-card-copy {
