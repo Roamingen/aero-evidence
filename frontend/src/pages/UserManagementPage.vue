@@ -12,7 +12,6 @@ const loading = ref(false);
 const savingUser = ref(false);
 const savingPreregister = ref(false);
 const savingAddress = ref(false);
-const deletingUser = ref(false);
 const detailDrawerVisible = ref(false);
 const selectedUser = ref(null);
 const preregisterResult = ref(null);
@@ -314,24 +313,6 @@ async function resetUserToPending(employeeNo) {
     }
   } catch (error) {
     ElMessage.error(error.message || '重置用户失败');
-  }
-}
-
-async function deleteUser(employeeNo) {
-  try {
-    deletingUser.value = true;
-    await authorizedJsonRequest(
-      auth.loginResult.value.token,
-      `/api/auth/users/${employeeNo}`,
-      { method: 'DELETE' },
-    );
-    ElMessage.success('用户已删除');
-    detailDrawerVisible.value = false;
-    await fetchAdminData();
-  } catch (error) {
-    ElMessage.error(error.message || '删除用户失败');
-  } finally {
-    deletingUser.value = false;
   }
 }
 
@@ -693,24 +674,6 @@ onMounted(() => {
               重置为待激活
             </el-button>
           </div>
-        </div>
-      </section>
-      <!-- 删除用户 -->
-      <section class="module-panel">
-        <div class="module-title">删除用户</div>
-        <div class="reset-section" style="border-color: rgba(220,38,38,0.2); background: rgba(220,38,38,0.03);">
-          <p class="reset-hint">将用户标记为已注销并清除地址绑定，用户将从人员列表中移除且无法登录。历史签名记录仍会保留。</p>
-          <el-popconfirm
-            title="确定要删除该用户吗？用户将从列表移除且无法登录，历史记录保留。"
-            confirm-button-text="确定删除"
-            cancel-button-text="取消"
-            confirm-button-type="danger"
-            @confirm="deleteUser(selectedUser.employeeNo)"
-          >
-            <template #reference>
-              <el-button type="danger" :loading="deletingUser">删除用户</el-button>
-            </template>
-          </el-popconfirm>
         </div>
       </section>
     </div>
